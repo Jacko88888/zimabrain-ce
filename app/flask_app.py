@@ -1,0 +1,1622 @@
+import html
+import urllib.request
+import subprocess
+import re
+from datetime import datetime
+from flask import Flask, request, jsonify, Response
+from brain import render as brain_render
+from brain import answer_builder
+
+APP_NAME = "ZimaBrain CE"
+APP_SUBTITLE = "Local Zima Knowledge Assistant"
+APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
+APP_VERSION = "v1.6.0-beta"
+DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
+
+app = Flask(__name__)
+
+SESSION_HISTORY = []
+DASHBOARD_REPORT = ""
+DASHBOARD_STATUS = "Dashboard evidence not loaded yet."
+
+
+def esc(value):
+    return html.escape(str(value or ""))
+
+
+def fetch_dashboard_report():
+    req = urllib.request.Request(
+        DASHBOARD_REPORT_URL,
+        headers={"User-Agent": "ZimaBrain-CE-Flask"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as response:
+        return response.read().decode("utf-8", errors="replace").strip()
+
+
+def parse_dashboard_alerts(report_text):
+    alerts = []
+    in_alerts = False
+
+    for raw in report_text.splitlines():
+        line = raw.strip()
+
+        if line == "===== RAW DASHBOARD ALERTS =====":
+            in_alerts = True
+            continue
+
+        if in_alerts and line.startswith("====="):
+            break
+
+        if in_alerts and line.startswith("WARN:"):
+            alerts.append(line.replace("WARN:", "YELLOW:", 1).strip())
+        elif in_alerts and line.startswith("CRITICAL:"):
+            alerts.append(line.replace("CRITICAL:", "RED:", 1).strip())
+        elif in_alerts and line.startswith("OK:"):
+            alerts.append(line.replace("OK:", "INFO:", 1).strip())
+
+    return alerts
+
+
+def parse_dashboard_disks(report_text):
+    disks = []
+    in_disks = False
+
+    for raw in report_text.splitlines():
+        line = raw.strip()
+
+        if line == "===== DISKS / SMART SUMMARY =====":
+            in_disks = True
+            continue
+
+        if in_disks and line.startswith("====="):
+            break
+
+        if not in_disks or "|" not in line or line.startswith("Device ") or line.startswith("---"):
+            continue
+
+        parts = [x.strip() for x in line.split("|")]
+        if len(parts) >= 10:
+            disks.append({
+                "device": parts[0],
+                "model": parts[1],
+                "size": parts[2],
+                "mount": parts[3],
+                "health": parts[4],
+                "temp": parts[5],
+                "realloc": parts[6],
+                "pending": parts[7],
+                "crc": parts[8],
+                "power_on": parts[9],
+            })
+
+    return disks
+
+
+def parse_dashboard_exited_containers(report_text):
+    exited = []
+    in_containers = False
+
+    for raw in report_text.splitlines():
+        line = raw.strip()
+
+        if line == "===== CONTAINERS =====":
+            in_containers = True
+            continue
+
+        if in_containers and line.startswith("====="):
+            break
+
+        if not in_containers or "|" not in line or line.startswith("Name ") or line.startswith("---"):
+            continue
+
+        parts = [x.strip() for x in line.split("|")]
+        if len(parts) >= 3 and parts[1].lower() == "exited":
+            exited.append({
+                "name": parts[0],
+                "status": parts[1],
+                "image": parts[2],
+            })
+
+    return exited
+
+
+def severity_dot(text):
+    if text.startswith("YELLOW:"):
+        return "🟡 " + text
+    if text.startswith("RED:"):
+        return "🔴 " + text
+    if text.startswith("INFO:"):
+        return "ℹ️ " + text
+    return text
+
+
+def normalize_dashboard_evidence(alerts, disks, exited):
+    real_alerts = []
+    info_alerts = []
+    container_alerts = []
+
+    for alert in alerts:
+        low = alert.lower()
+        if "n/a" in low:
+            if alert.startswith("YELLOW:"):
+                alert = alert.replace("YELLOW:", "INFO:", 1)
+            info_alerts.append(alert + " (SMART value unavailable, not confirmed failure)")
+        elif "container exited" in low:
+            container_alerts.append(alert)
+        else:
+            real_alerts.append(alert)
+
+    disk_attention = []
+    disk_ok = []
+
+    for d in disks:
+        issues = []
+        if d.get("crc") not in ["0", "-", "N/A", "", None]:
+            issues.append(f"CRC {d.get('crc')}")
+        if d.get("pending") not in ["0", "-", "N/A", "", None]:
+            issues.append(f"pending {d.get('pending')}")
+        if d.get("realloc") not in ["0", "-", "N/A", "", None]:
+            issues.append(f"reallocated {d.get('realloc')}")
+        if str(d.get("health", "")).upper() not in ["PASSED", "OK"]:
+            issues.append(f"health {d.get('health')}")
+
+        item = dict(d)
+        item["issues"] = issues
+
+        if issues:
+            disk_attention.append(item)
+        else:
+            disk_ok.append(item)
+
+    return {
+        "real_alerts": real_alerts,
+        "info_alerts": info_alerts,
+        "container_alerts": container_alerts,
+        "disk_attention": disk_attention,
+        "disk_ok": disk_ok,
+        "exited_containers": exited,
+    }
+
+
+
+
+def run_host_command(command, timeout=12):
+    try:
+        return subprocess.check_output(
+            ["nsenter", "-t", "1", "-m", "-u", "-n", "-i", "--", "sh", "-lc", command],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        ).strip()
+    except subprocess.CalledProcessError as e:
+        return e.output.strip()
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def collect_same_report_evidence():
+    return {
+        "failed_units": run_host_command("systemctl --failed --no-pager --no-legend 2>/dev/null || true"),
+        "lsblk": run_host_command("lsblk -o NAME,PKNAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null || true"),
+        "mounts": run_host_command("findmnt -P -o SOURCE,TARGET,FSTYPE,OPTIONS 2>/dev/null | grep -Ei 'mergerfs|snapraid|/DATA|/media' | head -120 || true"),
+        "docker_ps": run_host_command("docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null | head -120 || true"),
+        "docker_access": run_host_command(
+            "for c in $(docker ps -q 2>/dev/null); do "
+            "docker inspect --format '{{.Name}}|{{range .Mounts}}{{.Source}}->{{.Destination}}:{{.RW}};{{end}}|{{range $p,$v := .NetworkSettings.Ports}}{{$p}}=>{{range $v}}{{.HostIp}}:{{.HostPort}},{{end}};{{end}}' $c; "
+            "done 2>/dev/null | head -200 || true",
+            timeout=20,
+        ),
+        "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
+        "host_os": run_host_command("cat /etc/os-release 2>/dev/null || true"),
+        "kernel": run_host_command("uname -r 2>/dev/null || true"),
+        "uptime": run_host_command("uptime -p 2>/dev/null || true"),
+        "rauc": run_host_command("rauc status 2>&1 || true"),
+        "cmdline": run_host_command("cat /proc/cmdline 2>/dev/null || true"),
+        "host_date": run_host_command("date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || true"),
+    }
+
+
+def evaluate_critical_same_report(evidence):
+    findings = []
+    failed = evidence.get("failed_units", "")
+    lsblk_text = evidence.get("lsblk", "")
+    mounts = evidence.get("mounts", "")
+    docker_ps = evidence.get("docker_ps", "")
+    docker_access = evidence.get("docker_access", "")
+    nvidia = evidence.get("nvidia", "")
+
+    low_failed = failed.lower()
+    low_mounts = mounts.lower()
+    low_ps = docker_ps.lower()
+    low_access = docker_access.lower()
+    low_nvidia = nvidia.lower()
+
+    if failed.strip():
+        findings.append({
+            "level": "YELLOW",
+            "title": "Failed systemd unit detected",
+            "detail": failed.splitlines()[0],
+            "why": "A failed host unit can indicate a broken scheduled task, service, or maintenance layer.",
+            "next": "Inspect the exact failed unit before changing anything.",
+        })
+
+    if "snapraid-sync.service" in low_failed and "failed" in low_failed:
+        level = "RED" if ("mergerfs" in low_mounts or "snapraid" in low_mounts) else "YELLOW"
+        findings.append({
+            "level": level,
+            "title": "DATA PROTECTION MAY BE DOWN",
+            "detail": "snapraid-sync.service is failed in the same host report.",
+            "why": "If a mergerfs/SnapRAID pool depends on this sync, parity protection is not completing.",
+            "next": "Check journalctl -u snapraid-sync and verify SnapRAID config/parity before trusting protection.",
+        })
+
+    # Holger rule: data + parity partitions on same physical disk.
+    sr_rows = []
+    for raw in lsblk_text.splitlines():
+        line = raw.strip()
+        if "SR-DATA" in line or "SR-PARITY" in line:
+            sr_rows.append(line)
+
+    if sr_rows:
+        physical_roots = set()
+        has_data = False
+        has_parity = False
+
+        for line in sr_rows:
+            parts = line.split()
+            if not parts:
+                continue
+            name = parts[0].replace("└─", "").replace("├─", "")
+            root = name
+            if name.startswith("sd") and len(name) > 3:
+                root = name[:3]
+            if "SR-DATA" in line:
+                has_data = True
+            if "SR-PARITY" in line:
+                has_parity = True
+            physical_roots.add(root)
+
+        if has_data and has_parity and len(physical_roots) == 1:
+            findings.append({
+                "level": "RED",
+                "title": "SnapRAID parity has no physical fault tolerance",
+                "detail": "Data and parity labels appear on the same physical disk.",
+                "why": "If that disk dies, both data and parity die together.",
+                "next": "Move parity to a separate physical disk before treating the pool as protected.",
+            })
+
+    # Exposed full data access rule.
+    for raw in docker_access.splitlines():
+        line = raw.strip()
+        if not line or "|" not in line:
+            continue
+
+        name = line.split("|", 1)[0].lstrip("/")
+        line_low = line.lower()
+
+        # Strict Holger rule:
+        # flag only full host /DATA mounted back as /DATA read-write,
+        # not normal app folders like /DATA/AppData/app -> /data.
+        has_full_data_rw = (
+            "/DATA->/DATA:True" in line
+            or "/DATA->/DATA:true" in line
+            or "/DATA->/DATA:rw" in line
+            or "/host/DATA->/DATA:True" in line
+            or "/host/DATA->/DATA:true" in line
+            or "/host/DATA->/DATA:rw" in line
+        )
+
+        publishes_lan = (
+            "0.0.0.0:" in line_low
+            or ":::" in line_low
+            or "192.168." in line_low
+            or "10." in line_low
+        )
+
+        if has_full_data_rw and publishes_lan:
+            findings.append({
+                "level": "RED",
+                "title": "Container has full /DATA write access and published ports",
+                "detail": name,
+                "why": "A no-auth web/VNC/desktop service here could expose all user data to the network.",
+                "next": "Verify authentication and restrict/firewall the published ports before trusting it.",
+            })
+
+    # exFAT warning.
+    exfat_rows = [line.strip() for line in lsblk_text.splitlines() if " exfat " in f" {line.lower()} "]
+    if exfat_rows:
+        findings.append({
+            "level": "YELLOW",
+            "title": "exFAT storage detected",
+            "detail": "; ".join(exfat_rows[:3]),
+            "why": "exFAT has no POSIX permissions and no journaling, so it is weaker for NAS workload safety.",
+            "next": "Use exFAT only when portability is required, and avoid treating it like a robust NAS filesystem.",
+        })
+
+    # GPU runtime warning.
+    ai_running = ("ollama" in low_ps or "open-webui" in low_ps or "pdf-ai" in low_ps)
+    gpu_bad = (
+        "failed" in low_nvidia
+        or "not found" in low_nvidia
+        or "couldn't communicate" in low_nvidia
+        or "no devices were found" in low_nvidia
+        or "error" in low_nvidia
+    )
+
+    if ai_running and gpu_bad:
+        findings.append({
+            "level": "YELLOW",
+            "title": "GPU acceleration may not be active",
+            "detail": nvidia.splitlines()[0] if nvidia.strip() else "nvidia-smi returned no GPU.",
+            "why": "AI containers may be running CPU-only even though GPU workloads are expected.",
+            "next": "Verify nvidia-smi and container GPU runtime before assuming Ollama/Open WebUI is GPU accelerated.",
+        })
+
+    return findings
+
+
+def critical_badge(level):
+    if level == "RED":
+        return "🔴 RED"
+    if level == "YELLOW":
+        return "🟡 YELLOW"
+    return "ℹ️ INFO"
+
+
+def dashboard_bundle():
+    global DASHBOARD_REPORT, DASHBOARD_STATUS
+
+    if not DASHBOARD_REPORT.strip():
+        try:
+            DASHBOARD_REPORT = fetch_dashboard_report()
+            DASHBOARD_STATUS = f"Dashboard evidence loaded: {len(DASHBOARD_REPORT):,} characters."
+        except Exception as e:
+            DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
+
+    alerts = parse_dashboard_alerts(DASHBOARD_REPORT)
+    disks = parse_dashboard_disks(DASHBOARD_REPORT)
+    exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
+    normalized = normalize_dashboard_evidence(alerts, disks, exited)
+    same_report_evidence = collect_same_report_evidence()
+    critical_findings = evaluate_critical_same_report(same_report_evidence)
+
+    return {
+        "report": DASHBOARD_REPORT,
+        "status": DASHBOARD_STATUS,
+        "alerts": alerts,
+        "disks": disks,
+        "exited": exited,
+        "normalized": normalized,
+        "same_report_evidence": same_report_evidence,
+        "critical_findings": critical_findings,
+    }
+
+
+
+def run_host_shell(command, timeout=12):
+    try:
+        return subprocess.check_output(
+            ["nsenter", "-t", "1", "-m", "-u", "-n", "-i", "--", "sh", "-lc", command],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        ).strip()
+    except subprocess.CalledProcessError as e:
+        return (e.output or "").strip()
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def parse_lsblk_pairs(text):
+    rows = []
+    for line in text.splitlines():
+        item = {}
+        for key, value in re.findall(r'(\w+)="([^"]*)"', line):
+            item[key] = value
+        if item:
+            rows.append(item)
+    return rows
+
+
+def collect_critical_verifier():
+    findings = []
+    facts = []
+
+    failed_units = run_host_shell("systemctl --failed --no-pager --no-legend 2>/dev/null || true")
+    lsblk_text = run_host_shell("lsblk -P -o NAME,PKNAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null || true")
+    mounts_text = run_host_shell("findmnt -o SOURCE,TARGET,FSTYPE,OPTIONS 2>/dev/null | grep -Ei 'mergerfs|snapraid|/DATA|/media' | head -250 || true")
+    docker_ps = run_host_shell("docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true", timeout=15)
+    docker_inspect = run_host_shell(
+        "for id in $(docker ps -q 2>/dev/null); do docker inspect --format '{{.Name}}|{{range .Mounts}}{{.Source}}>{{.Destination}}>{{.RW}};{{end}}|{{json .NetworkSettings.Ports}}' \"$id\"; done 2>/dev/null || true",
+        timeout=25,
+    )
+    docker_user = run_host_shell("iptables -S DOCKER-USER 2>/dev/null || true")
+    gpu_text = run_host_shell("docker info 2>/dev/null | grep -i -A4 'Runtimes' || true; echo '---NVIDIA---'; nvidia-smi -L 2>&1 || true", timeout=12)
+
+    failed_lower = failed_units.lower()
+    mounts_lower = mounts_text.lower()
+    docker_lower = docker_ps.lower()
+    gpu_lower = gpu_text.lower()
+
+    if failed_units.strip():
+        facts.append("systemctl --failed returned one or more failed units.")
+        for line in failed_units.splitlines():
+            if line.strip():
+                if "snapraid-sync.service" in line:
+                    findings.append({
+                        "level": "RED",
+                        "title": "DATA PROTECTION IS DOWN",
+                        "evidence": "systemctl --failed shows snapraid-sync.service failed.",
+                        "why": "SnapRAID sync is not completing, so parity protection is not current.",
+                        "next": "Check journalctl -u snapraid-sync and fix the SnapRAID config/parity before relying on the pool.",
+                    })
+                else:
+                    findings.append({
+                        "level": "YELLOW",
+                        "title": "Failed systemd unit detected",
+                        "evidence": line.strip(),
+                        "why": "A failed host unit can indicate a broken scheduled task or system helper.",
+                        "next": "Inspect only this failed unit before changing unrelated services.",
+                    })
+
+    mergerfs_mounted = "mergerfs" in mounts_lower
+    if mergerfs_mounted:
+        facts.append("A mergerfs mount is present in findmnt output.")
+
+    if "snapraid-sync.service" in failed_lower and mergerfs_mounted:
+        findings.append({
+            "level": "RED",
+            "title": "MergerFS pool present while SnapRAID sync is failed",
+            "evidence": "findmnt shows mergerfs and systemctl --failed shows snapraid-sync.service failed.",
+            "why": "The pool may look usable, but parity protection is not completing.",
+            "next": "Fix SnapRAID sync first, then verify snapraid status/sync/scrub.",
+        })
+
+    rows = parse_lsblk_pairs(lsblk_text)
+    sr_data = []
+    sr_parity = []
+
+    for r in rows:
+        label = r.get("LABEL", "")
+        fstype = r.get("FSTYPE", "")
+        name = r.get("NAME", "")
+        pkname = r.get("PKNAME", "") or name
+        size = r.get("SIZE", "")
+
+        if label.upper().startswith("SR-DATA"):
+            sr_data.append((name, pkname, label))
+        if "PARITY" in label.upper():
+            sr_parity.append((name, pkname, label))
+
+        if fstype.lower() == "exfat":
+            findings.append({
+                "level": "YELLOW",
+                "title": "exFAT disk detected",
+                "evidence": f"{name} label={label} size={size} fstype=exfat.",
+                "why": "exFAT has no POSIX permissions and no journaling, so it is fragile under NAS workload.",
+                "next": "Use it only with clear intent, and verify backups before depending on it.",
+            })
+
+    if sr_data and sr_parity:
+        data_pk = {x[1] for x in sr_data}
+        parity_pk = {x[1] for x in sr_parity}
+        overlap = sorted(data_pk.intersection(parity_pk))
+        if overlap:
+            findings.append({
+                "level": "RED",
+                "title": "SnapRAID parity is on the same physical disk as data",
+                "evidence": f"Data labels {sr_data} and parity labels {sr_parity} share physical disk(s): {', '.join(overlap)}.",
+                "why": "If that physical disk fails, data and parity are lost together.",
+                "next": "Move parity to a separate physical disk before treating the pool as protected.",
+            })
+
+    docker_user_open = "-A DOCKER-USER -j RETURN" in docker_user or "RETURN" in docker_user
+
+    for line in docker_inspect.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            continue
+
+        name, mounts, ports = parts
+        cname = name.lstrip("/")
+
+        has_data_rw = ">/DATA>true" in mounts or ">/host/DATA>true" in mounts
+        has_ports = '"HostPort"' in ports and ports not in ["{}", "null"]
+
+        if has_data_rw and has_ports:
+            level = "RED" if docker_user_open else "YELLOW"
+            findings.append({
+                "level": level,
+                "title": "Published container has full read-write /DATA access",
+                "evidence": f"{cname} has /DATA rw and published ports: {ports[:240]}",
+                "why": "If the service has no authentication or weak authentication, LAN access can become full data access.",
+                "next": "Verify authentication and firewall exposure for this container before exposing it further.",
+            })
+
+    if ("ollama" in docker_lower or "open-webui" in docker_lower) and (
+        "failed" in gpu_lower
+        or "not found" in gpu_lower
+        or "couldn't communicate" in gpu_lower
+        or "no devices were found" in gpu_lower
+    ):
+        findings.append({
+            "level": "YELLOW",
+            "title": "GPU acceleration may not be active",
+            "evidence": "ollama/open-webui is running, but nvidia-smi did not return a usable GPU list.",
+            "why": "AI containers may be running CPU-only even if GPU runtime appears configured.",
+            "next": "Verify nvidia-smi on host and inside the intended AI container before assuming GPU acceleration.",
+        })
+
+    if not facts:
+        facts.append("Critical verifier collected host evidence but found no high-confidence structural facts.")
+
+    red_count = len([f for f in findings if f["level"] == "RED"])
+    yellow_count = len([f for f in findings if f["level"] == "YELLOW"])
+
+    return {
+        "findings": findings,
+        "facts": facts,
+        "red_count": red_count,
+        "yellow_count": yellow_count,
+    }
+
+
+def critical_to_text(critical):
+    lines = []
+    findings = critical.get("findings", [])
+
+    if not findings:
+        lines.append("- No RED/YELLOW same-report critical findings were detected by the current verifier layer.")
+        return lines
+
+    for item in findings:
+        icon = "🔴" if item["level"] == "RED" else "🟡"
+        lines.append(f"- {icon} {item['level']}: {item['title']}")
+        lines.append(f"  Evidence: {item['evidence']}")
+        lines.append(f"  Why it matters: {item['why']}")
+        lines.append(f"  Next safest step: {item['next']}")
+
+    return lines
+
+
+
+
+def build_verifier_summary(bundle):
+    n = bundle["normalized"]
+    critical = bundle.get("critical_findings", [])
+    summary = []
+
+    summary.append("#### Top verified issues")
+
+    if critical:
+        for finding in critical:
+            summary.append(f"- {critical_badge(finding['level'])}: {finding['title']}")
+    else:
+        summary.append("- No critical same-report findings detected.")
+
+    if n.get("real_alerts"):
+        for alert in n["real_alerts"]:
+            summary.append(f"- {severity_dot(alert)}")
+
+    if n.get("container_alerts"):
+        summary.append(f"- 🟡 YELLOW: {len(n['container_alerts'])} exited container/service alerts")
+
+    if n.get("info_alerts"):
+        summary.append(f"- ℹ️ INFO: {len(n['info_alerts'])} unsupported/N/A SMART metrics, not confirmed disk failures")
+
+    summary.append("")
+    summary.append("#### Checked but not detected in this report")
+
+    titles = " ".join(item.get("title", "") for item in critical).lower()
+
+    if "data protection" not in titles and "snapraid-sync" not in titles:
+        summary.append("- No failed snapraid-sync.service protection failure was detected in this report.")
+
+    if "physical fault tolerance" not in titles and "same physical disk" not in titles:
+        summary.append("- No SnapRAID data/parity-on-same-physical-disk issue was detected in this report.")
+
+    if "full /data write access" not in titles:
+        summary.append("- No full host /DATA mounted back as /DATA with published ports was detected in this report.")
+
+    if "gpu acceleration" not in titles:
+        summary.append("- No GPU acceleration failure was detected by the current critical rules.")
+
+    return summary
+
+
+
+
+def simplify_mount_line(line):
+    # Preferred format from: findmnt -P -o SOURCE,TARGET,FSTYPE,OPTIONS
+    pairs = dict(re.findall(r'([A-Z]+)="([^"]*)"', line))
+
+    if pairs:
+        source = pairs.get("SOURCE", "")
+        target = pairs.get("TARGET", "")
+        fstype = pairs.get("FSTYPE", "")
+        opts = pairs.get("OPTIONS", "")
+        mode = "ro" if opts.startswith("ro") or ",ro" in opts else "rw"
+
+        label = f"{source} -> {target}"
+        if fstype:
+            label += f" [{fstype}]"
+        label += f" {mode}"
+        return label.strip()
+
+    # Fallback for older raw findmnt tree output.
+    cleaned = line.replace("│", " ").replace("├─", " ").replace("└─", " ").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+
+
+def answer_question(question):
+    bundle = dashboard_bundle()
+    return answer_builder.answer_question(
+        question,
+        bundle,
+        build_verifier_summary,
+        critical_badge,
+        severity_dot,
+    )
+
+
+
+
+
+def build_installed_apps_port_map_html(bundle):
+    import html
+    import re
+
+    evidence = bundle.get("same_report_evidence", {}) if isinstance(bundle, dict) else {}
+    docker_ps = evidence.get("docker_ps", "") or ""
+
+    rows = []
+    used_ports = {}
+    exposed_count = 0
+
+    admin_terms = [
+        "portainer", "netdata", "grafana", "prometheus", "open-webui",
+        "nextcloud", "immich", "jellyfin", "qbittorrent", "homepage",
+        "wazuh", "zima", "webui", "dashboard"
+    ]
+
+    def esc(v):
+        return html.escape(str(v or ""))
+
+    def extract_host_ports(port_text, app_name):
+        ports = []
+        for m in re.finditer(r"(?:(0\.0\.0\.0|127\.0\.0\.1|\[::\]|:::|::):)?(\d{2,5})->", port_text or ""):
+            host = m.group(1) or ""
+            port = m.group(2)
+            label = port
+            if host in ("0.0.0.0", ":::", "::", "[::]"):
+                label = f"{port} LAN"
+            elif host == "127.0.0.1":
+                label = f"{port} local"
+            ports.append(label)
+            used_ports.setdefault(port, set()).add(app_name)
+        return sorted(set(ports), key=lambda x: int(re.sub(r"\D", "", x) or 0))
+
+    for raw in docker_ps.splitlines():
+        line = raw.strip()
+        if not line or "|" not in line:
+            continue
+
+        parts = line.split("|", 3)
+        if len(parts) != 4:
+            continue
+
+        name, image, status, ports_text = [x.strip() for x in parts]
+        host_ports = extract_host_ports(ports_text, name)
+
+        if not host_ports:
+            continue
+
+        low = f"{name} {image} {ports_text}".lower()
+        risk = []
+        if "0.0.0.0:" in ports_text or ":::" in ports_text or "[::]:" in ports_text:
+            risk.append("LAN")
+        if any(t in low for t in admin_terms):
+            risk.append("Admin UI")
+
+        if "LAN" in risk:
+            exposed_count += 1
+
+        rows.append({
+            "name": name,
+            "image": image,
+            "status": status,
+            "ports": ", ".join(host_ports),
+            "risk": ", ".join(risk) if risk else "Local/check"
+        })
+
+    rows = sorted(rows, key=lambda r: r["name"].lower())
+
+    port_badges = []
+    for port in sorted(used_ports.keys(), key=lambda x: int(x)):
+        apps = ", ".join(sorted(used_ports[port])[:4])
+        port_badges.append(
+            f"<span title='{esc(apps)}' style='display:inline-block; background:#172554; color:#dbeafe; border:1px solid #3b82f6; border-radius:999px; padding:4px 9px; margin:3px; font-family:Consolas,monospace; font-size:12px;'>{esc(port)}</span>"
+        )
+
+    table_rows = []
+    for idx, r in enumerate(rows[:120]):
+        bg = "background:#0b1220;" if idx % 2 == 0 else "background:#111827;"
+        table_rows.append(
+            f"<tr style='{bg} border-bottom:1px solid #334155;'>"
+            f"<td style='padding:9px 11px; white-space:nowrap;'><strong>{esc(r['name'])}</strong></td>"
+            f"<td style='padding:9px 11px; white-space:nowrap;'><code>{esc(r['ports'])}</code></td>"
+            f"<td style='padding:9px 11px;'>{esc(r['risk'])}</td>"
+            f"<td style='padding:9px 11px; color:#94a3b8;'>{esc(r['status'])}</td>"
+            "</tr>"
+        )
+
+    if not table_rows:
+        table_rows.append("<tr><td colspan='4'>No published Docker host ports were parsed from the current report.</td></tr>")
+
+    return f"""
+  <div class="panel">
+    <h3>Installed Apps / Port Map</h3>
+    <div class="small">Compact port allocation view before adding new apps.</div>
+
+    <div class="chips">
+      <span class="chip">Apps with ports: {len(rows)}</span>
+      <span class="chip">Unique host ports: {len(used_ports)}</span>
+      <span class="chip">LAN exposed: {exposed_count}</span>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="small" style="margin-bottom:6px;">Used host ports</div>
+      {''.join(port_badges)}
+    </div>
+
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer; font-weight:800; color:#dbeafe;">Show full installed app port table</summary>
+      <div style="overflow:auto; margin-top:12px;">
+        <table style="width:100%; border-collapse:separate; border-spacing:0 4px; font-size:13px;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:10px 12px; border-bottom:2px solid #475569; color:#bfdbfe;">App / Container</th>
+              <th style="text-align:left; padding:10px 12px; border-bottom:2px solid #475569; color:#bfdbfe;">Host Ports</th>
+              <th style="text-align:left; padding:10px 12px; border-bottom:2px solid #475569; color:#bfdbfe;">Note</th>
+              <th style="text-align:left; padding:10px 12px; border-bottom:2px solid #475569; color:#bfdbfe;">State</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(table_rows)}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+"""
+
+
+@app.route("/")
+def index():
+    bundle = dashboard_bundle()
+    n = bundle["normalized"]
+    critical = collect_critical_verifier()
+
+    critical_items = critical.get("findings", [])
+    critical_html = "".join(
+        f"<li>{'🔴' if item['level'] == 'RED' else '🟡'} <b>{esc(item['level'])}: {esc(item['title'])}</b><br><span class='small'>{esc(item['evidence'])}</span></li>"
+        for item in critical_items[:8]
+    ) or "<li>No same-report critical findings detected.</li>"
+
+    real_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["real_alerts"]) or "<li>No real alerts parsed.</li>"
+    container_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["container_alerts"]) or "<li>No container alerts parsed.</li>"
+    info_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["info_alerts"][:6]) or "<li>No info alerts parsed.</li>"
+
+    host_ev = bundle.get("same_report_evidence", {})
+    host_os_raw = host_ev.get("host_os", "")
+    host_os_name = "Unknown"
+    host_os_version = "Unknown"
+
+    for line in host_os_raw.splitlines():
+        if line.startswith("PRETTY_NAME="):
+            host_os_name = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("VERSION="):
+            host_os_version = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("VERSION_ID=") and host_os_version == "Unknown":
+            host_os_version = line.split("=", 1)[1].strip().strip('"')
+
+    host_kernel = host_ev.get("kernel", "").strip() or "Unknown"
+    host_uptime = host_ev.get("uptime", "").strip() or "Unknown"
+    host_date = host_ev.get("host_date", "").strip() or "Unknown"
+    host_rauc_raw = host_ev.get("rauc", "").strip()
+    host_rauc = "Unavailable"
+    if host_rauc_raw and "not found" not in host_rauc_raw.lower():
+        useful_rauc = []
+        for line in host_rauc_raw.splitlines():
+            clean = line.strip()
+            low = clean.lower()
+            if not clean:
+                continue
+            if clean.startswith("==="):
+                continue
+            if "system info" in low:
+                continue
+            useful_rauc.append(clean)
+        host_rauc = (useful_rauc[0] if useful_rauc else "Available")[:120]
+
+    history_html = ""
+    for idx, item in enumerate(reversed(SESSION_HISTORY[-20:]), 1):
+        history_html += f"""
+        <details>
+          <summary>{idx}. {esc(item['question'][:55])}</summary>
+          <div class="small">{esc(item['time'])}</div>
+          <pre>{esc(item['answer'][:1200])}</pre>
+        </details>
+        """
+
+    if not history_html:
+        history_html = '<div class="small">No questions asked yet.</div>'
+
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{APP_NAME}</title>
+<style>
+:root {{
+  --bg:#080b10; --panel:#111722; --panel2:#0d1320; --line:#263241;
+  --text:#e8edf2; --muted:#9aa8b5; --blue:#93c5fd; --green:#22c55e;
+  --yellow:#facc15; --red:#ef4444;
+}}
+* {{ box-sizing:border-box; }}
+body {{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: Inter, Arial, sans-serif;
+}}
+.sidebar {{
+  position:fixed; left:0; top:0; bottom:0; width:330px;
+  overflow:auto; background:#111722; border-right:1px solid var(--line);
+  padding:18px;
+}}
+.main {{
+  margin-left:330px; padding:24px 28px 40px 28px;
+}}
+h1 {{ font-size:42px; margin:0; }}
+.subtitle {{ color:var(--muted); margin-top:6px; }}
+.badge {{
+  display:inline-block; margin-top:12px; padding:6px 12px;
+  border-radius:999px; background:#1e293b; border:1px solid #334155;
+  color:var(--blue); font-weight:700; font-size:13px;
+}}
+.rule {{
+  margin-top:16px; padding:14px 18px; border-radius:14px;
+  background:linear-gradient(90deg,#111827,#162033);
+  border:1px solid #2c3b4d; color:#dbeafe; font-weight:700;
+}}
+.cards {{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px;
+}}
+.card {{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:16px; min-height:112px;
+}}
+.card-title {{ color:var(--blue); font-size:13px; font-weight:800; text-transform:uppercase; }}
+.card-value {{ font-size:22px; font-weight:900; margin-top:8px; }}
+.small {{ color:var(--muted); font-size:13px; line-height:1.45; }}
+.chips {{ margin-top:18px; }}
+.chip {{
+  display:inline-block; background:#172033; border:1px solid #304156; color:#dbeafe;
+  border-radius:999px; padding:6px 10px; margin:3px; font-size:13px;
+}}
+.grid3 {{
+  display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-top:16px;
+}}
+ul {{ padding-left:20px; }}
+.panel {{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:16px; margin-top:18px;
+}}
+.question {{
+  width:100%; height:100px; background:#050814; color:var(--text);
+  border:1px solid var(--line); border-radius:12px; padding:12px;
+  font-family:monospace;
+}}
+button, .button {{
+  background:linear-gradient(90deg,#2563eb,#7c3aed);
+  color:white; border:0; border-radius:12px; padding:10px 14px;
+  font-weight:800; cursor:pointer; text-decoration:none; display:inline-block;
+}}
+pre {{
+  white-space:pre-wrap; background:#050814; color:#dbeafe;
+  border:1px solid var(--line); border-radius:12px; padding:14px;
+  max-height:650px; overflow:auto;
+}}
+details {{
+  border:1px solid var(--line); border-radius:12px; padding:10px;
+  margin-bottom:10px; background:#0d1320;
+}}
+summary {{ cursor:pointer; font-weight:800; color:#dbeafe; }}
+iframe {{
+  width:100%; height:580px; border:0; border-radius:14px; background:#050814;
+}}
+
+
+{{brain_render.COPY_CODE_CSS}}
+</style>
+
+<style>
+.layer-columns {{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  margin-top: 12px;
+  width: 100%;
+}}
+
+.layer-col {{
+  background: rgba(15,23,42,.72);
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 14px;
+  padding: 11px;
+  min-height: 0;
+  box-shadow: 0 10px 24px rgba(0,0,0,.20);
+}}
+
+.layer-col-title {{
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  color: #bfdbfe;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}}
+
+.layer-list-clean {{
+  display: grid;
+  gap: 6px;
+}}
+
+.layer-chip-clean {{
+  display: block;
+  background: rgba(30,41,59,.88);
+  border: 1px solid rgba(148,163,184,.16);
+  color: #e5e7eb;
+  border-radius: 9px;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.25;
+  min-height: 18px;
+}}
+
+.layer-chip-clean.quality {{
+  border-color: rgba(34,197,94,.55);
+  background: linear-gradient(90deg, rgba(22,101,52,.72), rgba(30,41,59,.88));
+  color: #dcfce7;
+  font-weight: 900;
+}}
+
+.layer-chip-clean.manual {{
+  border-color: rgba(96,165,250,.50);
+  background: linear-gradient(90deg, rgba(30,64,175,.55), rgba(30,41,59,.88));
+  color: #dbeafe;
+  font-weight: 800;
+}}
+
+@media (max-width: 1300px) {{
+  .layer-columns {{
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+  }}
+}}
+
+@media (max-width: 760px) {{
+  .layer-columns {{
+    grid-template-columns: 1fr;
+  }}
+}}
+</style>
+
+</head>
+<body>
+<div class="sidebar">
+  <h2>Brain Session</h2>
+  <form method="post" action="/clear-session">
+    <button style="width:100%;">Clear Brain Session</button>
+  </form>
+  <p><a class="button" style="width:100%; text-align:center; margin-top:10px;" href="/session-full">Open Full Session View</a></p>
+  <p><a class="button" style="width:100%; text-align:center;" href="/session-download">Download Brain Session</a></p>
+  <hr style="border-color:#263241;">
+  {history_html}
+</div>
+
+<div class="main">
+  <h1>{APP_NAME}</h1>
+  <div class="subtitle">{APP_SUBTITLE}</div>
+  <div class="subtitle">{APP_DESCRIPTOR}</div>
+  <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
+  <div class="rule">Analyze first → Verifier second → Explainer third → Repair guide last</div>
+
+  <div class="cards">
+    <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">8514</div><div class="small">{esc(bundle['status'])}</div></div>
+    <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
+    <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
+    <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>Build / Version Status</h3>
+    <div class="small">Public quality checkpoint passed: router, manual relevance, and answer quality scorecards are 100%.</div>
+    <div class="chips">
+      <span class="chip">ZimaBrain: {APP_VERSION}</span>
+      <span class="chip">Host OS: {esc(host_os_name)}</span>
+      <span class="chip">Host Version: {esc(host_os_version)}</span>
+      <span class="chip">Kernel: {esc(host_kernel)}</span>
+      <span class="chip">Uptime: {esc(host_uptime)}</span>
+      <span class="chip">RAUC: {esc(host_rauc)}</span>
+      <span class="chip">Evidence refreshed: {esc(host_date)}</span>
+      <span class="chip">Render module: active</span>
+      <span class="chip">Router module: active</span>
+      <span class="chip">Answer builder: active</span>
+      <span class="chip">Intent Brain Router: active</span>
+      <span class="chip">Checkpoint: 20260614-153118</span>
+      <span class="chip">Port: 8601</span>
+    </div>
+  </div>
+
+  
+  {build_installed_apps_port_map_html(bundle)}
+
+
+<h3>ZimaOS / ZimaBrain Layers</h3>\n<div class="small">Layer map is collapsed to save dashboard space. Open only when needed.</div>
+
+<details style="margin-top:12px;">
+  <summary style="cursor:pointer; font-weight:900; color:#dbeafe; background:#0f172a; border:1px solid #263241; border-radius:12px; padding:12px 14px;">
+    Show full ZimaBrain layer map
+  </summary>
+<div class="layer-columns">
+
+  <div class="layer-col">
+    <div class="layer-col-title">Core Verification</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean quality">Public Quality Scorecards 100%</span>
+      <span class="layer-chip-clean">Dashboard Evidence Loader</span>
+      <span class="layer-chip-clean">Evidence Normalizer</span>
+      <span class="layer-chip-clean">Critical Same-Report Verifier</span>
+      <span class="layer-chip-clean">Question Router</span>
+      <span class="layer-chip-clean">Intent Brain Router</span>
+      <span class="layer-chip-clean">Verified Answer Builder</span>
+      <span class="layer-chip-clean">Brain Session / Review</span>
+      <span class="layer-chip-clean manual">Official Manual Knowledge Engine</span>
+      <span class="layer-chip-clean manual">App Verified Install Guides</span>
+      <span class="layer-chip-clean manual">Third-Party App Store Index</span>
+    </div>
+  </div>
+
+  <div class="layer-col">
+    <div class="layer-col-title">Dashboard / System</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean">Dashboard Alerts</span>
+      <span class="layer-chip-clean">Failed Units</span>
+      <span class="layer-chip-clean">Container State</span>
+      <span class="layer-chip-clean">Report Comparison</span>
+      <span class="layer-chip-clean">Log Intake / Uploaded Evidence</span>
+      <span class="layer-chip-clean">Final Recommendation / Repair Planner</span>
+    </div>
+  </div>
+
+  <div class="layer-col">
+    <div class="layer-col-title">Disk / Storage</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean">Disk Inventory / Drive Count</span>
+      <span class="layer-chip-clean">Disk Health</span>
+      <span class="layer-chip-clean">Disk CRC</span>
+      <span class="layer-chip-clean">Filesystem Usage</span>
+      <span class="layer-chip-clean">SMART Trend Monitor</span>
+      <span class="layer-chip-clean">Storage / Mounts</span>
+      <span class="layer-chip-clean">Read-Only Storage Diagnostics</span>
+      <span class="layer-chip-clean">SnapRAID / MergerFS</span>
+      <span class="layer-chip-clean">RAID / Add Drive Planning</span>
+      <span class="layer-chip-clean">Backup / Borg Layer</span>
+    </div>
+  </div>
+
+  <div class="layer-col">
+    <div class="layer-col-title">Docker / Apps</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean">Docker Bind-Mount Verifier</span>
+      <span class="layer-chip-clean">Docker Daemon Diagnostics</span>
+      <span class="layer-chip-clean">App Storage-Path Verifier</span>
+      <span class="layer-chip-clean">App Runtime Diagnostics</span>
+      <span class="layer-chip-clean">App Setup / Version Playbook</span>
+      <span class="layer-chip-clean">Container Commands</span>
+    </div>
+  </div>
+
+  <div class="layer-col">
+    <div class="layer-col-title">Network / Access</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean">Network Exposure / Firewall</span>
+      <span class="layer-chip-clean">Network Connectivity Diagnostics</span>
+      <span class="layer-chip-clean">SMB / Shares Diagnostics</span>
+      <span class="layer-chip-clean">Permissions / Ownership Diagnostics</span>
+    </div>
+  </div>
+
+  <div class="layer-col">
+    <div class="layer-col-title">Install / Platform</div>
+    <div class="layer-list-clean">
+      <span class="layer-chip-clean">ZimaOS Update / Regression</span>
+      <span class="layer-chip-clean">ZimaOS Update / Rollback Safety</span>
+      <span class="layer-chip-clean">Install / Boot Diagnostics</span>
+      <span class="layer-chip-clean">GPU / AI Runtime</span>
+      <span class="layer-chip-clean">Disk Commands</span>
+      <span class="layer-chip-clean">System Commands</span>
+      <span class="layer-chip-clean">Network Commands</span>
+    </div>
+  </div>
+
+</div>
+</details>
+
+
+
+  <div class="grid3">
+    <div class="panel"><h3>Real Alerts</h3><ul>{real_alert_html}</ul></div>
+    <div class="panel"><h3>Container / Service Alerts</h3><ul>{container_alert_html}</ul></div>
+    <div class="panel"><h3>Info Only</h3><ul>{info_alert_html}</ul></div>
+  </div>
+
+  <div class="panel">
+    <h3>Critical Same-Report Verifier</h3>
+    <div class="small">This layer runs before question routing and flags high-confidence risks from the same report.</div>
+    <ul>{critical_html}</ul>
+  </div>
+
+  <div class="panel">
+    <h3>Cube Dashboard View</h3>
+    <p class="small">Optional live visual layer. If Zima Client feels slow, use the evidence cards above instead.</p>
+    <details>
+      <summary>Show live Cube Dashboard visual</summary>
+      <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h3>Ask ZimaBrain CE</h3>
+    <form method="post" action="/ask">
+      <textarea class="question" name="question" placeholder="Paste or type a new question here..."></textarea>
+      <p><button type="submit">Analyse Report</button></p>
+    </form>
+  </div>
+</div>
+
+
+{brain_render.COPY_CODE_JS}
+</body>
+</html>"""
+
+
+
+
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    question = request.form.get("question", "").strip()
+    answer = answer_question(question)
+
+    SESSION_HISTORY.append({
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "question": question,
+        "answer": answer,
+    })
+
+    bundle = dashboard_bundle()
+    n = bundle["normalized"]
+    html_answer = brain_render.render_answer_html(answer)
+
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ZimaBrain Answer</title>
+<style>
+:root {{
+  --bg:#080b10; --panel:#111722; --line:#263241;
+  --text:#e8edf2; --muted:#9aa8b5; --blue:#93c5fd;
+}}
+* {{ box-sizing:border-box; }}
+body {{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Arial,sans-serif;
+}}
+.wrap {{ padding:24px; max-width:1600px; margin:auto; }}
+.header {{ margin-bottom:18px; }}
+h1 {{ font-size:38px; margin:0; }}
+.subtitle {{ color:var(--muted); margin-top:6px; }}
+.badge {{
+  display:inline-block; margin-top:12px; padding:6px 12px;
+  border-radius:999px; background:#1e293b; border:1px solid #334155;
+  color:var(--blue); font-weight:700; font-size:13px;
+}}
+.rule {{
+  margin-top:14px; padding:14px 18px; border-radius:14px;
+  background:linear-gradient(90deg,#111827,#162033);
+  border:1px solid #2c3b4d; color:#dbeafe; font-weight:700;
+}}
+.cards {{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px;
+}}
+.card {{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:16px; min-height:96px;
+}}
+.card-title {{ color:var(--blue); font-size:13px; font-weight:800; text-transform:uppercase; }}
+.card-value {{ font-size:22px; font-weight:900; margin-top:8px; }}
+.small {{ color:var(--muted); font-size:13px; line-height:1.45; }}
+pre {{
+  white-space:pre-wrap; background:#050814; color:#dbeafe;
+  border:1px solid var(--line); border-radius:14px; padding:18px;
+  line-height:1.45;
+}}
+.answer-rendered {{
+  background:#050814;
+  color:#dbeafe;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:28px;
+  line-height:1.7;
+  font-size:16px;
+  max-width:1180px;
+}}
+.answer-rendered h2 {{
+  font-size:30px;
+  margin:22px 0 12px;
+  color:#ffffff;
+  line-height:1.25;
+}}
+.answer-rendered h3 {{
+  font-size:23px;
+  margin:22px 0 12px;
+  color:#dbeafe;
+  line-height:1.3;
+}}
+.answer-rendered h4 {{
+  font-size:19px;
+  margin:20px 0 10px;
+  color:#bfdbfe;
+  line-height:1.35;
+}}
+.answer-rendered h2:first-child {{
+  margin-top:0;
+}}
+.answer-rendered h2 + h3 {{
+  background:#0f172a;
+  border:1px solid #334155;
+  border-left:5px solid #38bdf8;
+  border-radius:12px;
+  padding:14px 16px;
+  margin-top:10px;
+  color:#ffffff;
+}}
+.answer-rendered p {{
+  margin:9px 0;
+}}
+.answer-rendered .md-bullet,
+.answer-rendered .md-number {{
+  margin:7px 0;
+  padding-left:4px;
+}}
+.answer-rendered code {{
+  background:#111827;
+  color:#e5e7eb;
+  padding:3px 7px;
+  border-radius:6px;
+  font-size:0.95em;
+}}
+.answer-rendered .codeblock {{
+  white-space:pre;
+  overflow-x:auto;
+  background:#020617;
+  color:#dbeafe;
+  border:1px solid #475569;
+  border-left:5px solid #38bdf8;
+  border-radius:14px;
+  padding:18px;
+  margin:16px 0;
+  font-family:Consolas, Monaco, monospace;
+  font-size:15px;
+  line-height:1.6;
+}}
+.answer-rendered .codeblock code {{
+  background:transparent;
+  padding:0;
+  color:#dbeafe;
+  font-size:15px;
+}}
+.answer-rendered blockquote {{
+  border-left:5px solid #38bdf8;
+  background:#0f172a;
+  padding:12px 16px;
+  border-radius:10px;
+}}
+.button {{
+  background:linear-gradient(90deg,#2563eb,#7c3aed);
+  color:white; border-radius:12px; padding:10px 14px;
+  text-decoration:none; font-weight:800; display:inline-block;
+}}
+.actions {{ margin:18px 0; }}
+.answer-dashboard-panel {{
+  background:#111722; border:1px solid #263241; border-radius:16px;
+  padding:16px; margin-top:18px;
+}}
+.answer-dashboard-panel iframe {{
+  width:100%; height:760px; border:0; border-radius:14px; background:#050814;
+}}
+.answer-dashboard-panel summary {{
+  cursor:pointer; font-weight:800; color:#dbeafe;
+}}
+</style>
+
+<style>
+.layer-columns {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}}
+.layer-col {{
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 14px;
+  background: rgba(15,23,42,.45);
+  padding: 12px;
+}}
+.layer-col-title {{
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin: 0 0 10px 0;
+}}
+.layer-list-clean {{
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: stretch;
+}}
+.layer-chip-clean {{
+  display: block;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(30,41,59,.92);
+  border: 1px solid rgba(148,163,184,.22);
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: normal;
+}}
+.layer-chip-clean.quality {{
+  border-color: rgba(34,197,94,.45);
+  background: rgba(20,83,45,.35);
+}}
+.layer-chip-clean.manual {{
+  border-color: rgba(96,165,250,.45);
+  background: rgba(30,64,175,.32);
+}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>{APP_NAME}</h1>
+    <div class="subtitle">{APP_SUBTITLE}</div>
+    <div class="subtitle">{APP_DESCRIPTOR}</div>
+    <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
+    <div class="rule">Analyze first → Verifier second → Explainer third → Repair guide last</div>
+
+    <div class="cards">
+      <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">8514</div><div class="small">{esc(bundle['status'])}</div></div>
+      <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
+      <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
+      <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
+    </div>
+  </div>
+
+  <div class="answer-dashboard-panel">
+    <h3>Cube Dashboard View</h3>
+    <div class="small">Optional live visual layer from the verified Cube dashboard.</div>
+    <details>
+      <summary>Show live Cube Dashboard visual</summary>
+      <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
+    </details>
+  </div>
+
+  <div class="actions">
+    <a class="button" href="/">Back to ZimaBrain</a>
+    <a class="button" href="/answer-download">Download Current Answer MD</a>
+    <a class="button" href="/answer-download-html">Download Current Answer HTML</a>
+    <a class="button" href="/session-download-html">Download Brain Session HTML</a>
+    <a class="button" href="/session-full">Open Full Session View</a>
+  </div>
+
+  <div class="answer-rendered">{html_answer}</div>
+</div>
+
+
+</body>
+</html>"""
+
+
+
+
+
+
+@app.route("/clear-session", methods=["POST"])
+def clear_session():
+    SESSION_HISTORY.clear()
+    return Response("<script>window.location='/'</script>", mimetype="text/html")
+
+
+@app.route("/session-full")
+def session_full():
+    body = build_session_export()
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Brain Session</title>
+<style>body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;padding:24px;}}pre{{white-space:pre-wrap;background:#050814;border:1px solid #263241;border-radius:14px;padding:18px;}}</style>
+
+<style>
+.layer-columns {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}}
+.layer-col {{
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 14px;
+  background: rgba(15,23,42,.45);
+  padding: 12px;
+}}
+.layer-col-title {{
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin: 0 0 10px 0;
+}}
+.layer-list-clean {{
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: stretch;
+}}
+.layer-chip-clean {{
+  display: block;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(30,41,59,.92);
+  border: 1px solid rgba(148,163,184,.22);
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: normal;
+}}
+.layer-chip-clean.quality {{
+  border-color: rgba(34,197,94,.45);
+  background: rgba(20,83,45,.35);
+}}
+.layer-chip-clean.manual {{
+  border-color: rgba(96,165,250,.45);
+  background: rgba(30,64,175,.32);
+}}
+</style>
+
+</head><body><p><a href="/">Back</a> | <a href="/session-download">Download</a></p><pre>{esc(body)}</pre></body></html>"""
+
+
+@app.route("/session-download")
+def session_download():
+    body = build_session_export()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        body,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename=zimabrain-session-{stamp}.md"},
+    )
+
+
+
+@app.route("/answer-download-html")
+def answer_download_html():
+    answer = SESSION_HISTORY[-1]["answer"] if SESSION_HISTORY else "No answer yet."
+    body_html = '<div class="answer-rendered">' + brain_render.render_answer_html(answer) + '</div>'
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        brain_render.rendered_download_page("ZimaBrain Current Answer", body_html),
+        mimetype="text/html",
+        headers={"Content-Disposition": f"attachment; filename=zimabrain-answer-{stamp}.html"},
+    )
+
+
+@app.route("/session-download-html")
+def session_download_html():
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if not SESSION_HISTORY:
+        body_html = '<div class="answer-rendered"><h2>ZimaBrain CE Brain Session</h2><p>No questions asked yet.</p></div>'
+    else:
+        parts = ['<div class="answer-rendered"><h2>ZimaBrain CE Brain Session</h2><p>Exported: ' + esc(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) + '</p></div>']
+        for idx, item in enumerate(SESSION_HISTORY, 1):
+            parts.append(
+                '<div class="session-item"><div class="session-meta">Question '
+                + esc(str(idx))
+                + ' · '
+                + esc(item.get("time", ""))
+                + '</div><div class="answer-rendered">'
+                + brain_render.render_answer_html(item.get("answer", ""))
+                + '</div></div>'
+            )
+        body_html = "\n".join(parts)
+
+    return Response(
+        brain_render.rendered_download_page("ZimaBrain Brain Session", body_html),
+        mimetype="text/html",
+        headers={"Content-Disposition": f"attachment; filename=zimabrain-session-{stamp}.html"},
+    )
+
+
+@app.route("/answer-download")
+def answer_download():
+    answer = SESSION_HISTORY[-1]["answer"] if SESSION_HISTORY else "No answer yet."
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        answer,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename=zimabrain-answer-{stamp}.md"},
+    )
+
+
+@app.route("/load-dashboard")
+def load_dashboard():
+    global DASHBOARD_REPORT, DASHBOARD_STATUS
+    try:
+        DASHBOARD_REPORT = fetch_dashboard_report()
+        DASHBOARD_STATUS = f"Dashboard evidence loaded: {len(DASHBOARD_REPORT):,} characters."
+        return jsonify({"ok": True, "status": DASHBOARD_STATUS})
+    except Exception as e:
+        DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
+        return jsonify({"ok": False, "status": DASHBOARD_STATUS}), 500
+
+
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "app": APP_VERSION, "history": len(SESSION_HISTORY), "dashboard_loaded": bool(DASHBOARD_REPORT.strip())})
+
+
+def build_session_export():
+    lines = []
+    lines.append("# ZimaBrain CE Brain Session")
+    lines.append("")
+    lines.append(f"Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("")
+
+    if not SESSION_HISTORY:
+        lines.append("No questions asked yet.")
+        return "\n".join(lines)
+
+    for idx, item in enumerate(SESSION_HISTORY, 1):
+        lines.append(f"## {idx}. {item['question']}")
+        lines.append("")
+        lines.append(f"Time: {item['time']}")
+        lines.append("")
+        lines.append(item["answer"])
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8601)

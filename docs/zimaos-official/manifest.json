@@ -1,0 +1,1524 @@
+{
+  "base": "https://www.zimaspace.com/docs/zimaos/",
+  "page_count": 89,
+  "error_count": 161,
+  "pages": [
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos",
+      "title": "Welcome to Zima Space | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos.md",
+      "chars": 11282,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index",
+      "title": "Welcome to Zima Space | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__index.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__index.md",
+      "chars": 11282,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/User-Guide",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html",
+      "title": "How to Install ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__how-to-install-zimaos.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__how-to-install-zimaos.html.md",
+      "chars": 6921,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index.html",
+      "title": "Welcome to Zima Space | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__index.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__index.html.md",
+      "chars": 11282,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/get-started.html",
+      "title": "Get Started | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__get-started.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__get-started.html.md",
+      "chars": 13929,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/features.html",
+      "title": "Features-Build Data Station | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__features.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__features.html.md",
+      "chars": 13857,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/remote-access.html",
+      "title": "Remote Access | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__remote-access.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__remote-access.html.md",
+      "chars": 6472,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/thunderbolt-direct-connect.html",
+      "title": "How to connect ZimaCube via Thunderbolt Cable | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__thunderbolt-direct-connect.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__thunderbolt-direct-connect.html.md",
+      "chars": 12417,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/sync-photos-with-immich.html",
+      "title": "How to Experience immich on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__sync-photos-with-immich.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__sync-photos-with-immich.html.md",
+      "chars": 6638,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/media-server-setup-with-jellyfin.html",
+      "title": "How to Watch Videos Anywhere with Jellyfin Media Server | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__media-server-setup-with-jellyfin.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__media-server-setup-with-jellyfin.html.md",
+      "chars": 20104,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/nvr-camera-server.html",
+      "title": "NVR Camera Server | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__nvr-camera-server.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__nvr-camera-server.html.md",
+      "chars": 7386,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/synology-smb-connect.html",
+      "title": "Link Synology and SMB Shares | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__synology-smb-connect.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__synology-smb-connect.html.md",
+      "chars": 9593,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/cli-guide.html",
+      "title": "How to use CLI to wander on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__cli-guide.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__cli-guide.html.md",
+      "chars": 7325,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/cloud-drive-connect.html",
+      "title": "Seamlessly Integrate Cloud and Edge for Total Data Management | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__cloud-drive-connect.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__cloud-drive-connect.html.md",
+      "chars": 9771,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/rsync-backup-clones.html",
+      "title": "Build Multiple Clones using rsync | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__rsync-backup-clones.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__rsync-backup-clones.html.md",
+      "chars": 4073,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/data-migration.html",
+      "title": "Data Migration Guide | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__data-migration.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__data-migration.html.md",
+      "chars": 5352,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zfs-setup.html",
+      "title": "ZFS on ZimaCube | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zfs-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zfs-setup.html.md",
+      "chars": 4999,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/raid-options.html",
+      "title": "More RAID Options | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__raid-options.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__raid-options.html.md",
+      "chars": 8787,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/synology-to-zimacube-migration.html",
+      "title": "From Synology to ZimaCube\uff0cmigrate all files! | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__synology-to-zimacube-migration.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__synology-to-zimacube-migration.html.md",
+      "chars": 7194,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-open-ssh-in-zimaos.html",
+      "title": "How to Enable SSH in ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__how-to-open-ssh-in-zimaos.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__how-to-open-ssh-in-zimaos.html.md",
+      "chars": 4981,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/docker-app-paths.html",
+      "title": "How to understand Docker App's paths On ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__docker-app-paths.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__docker-app-paths.html.md",
+      "chars": 7129,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/plex-setup-guide.html",
+      "title": "Detailed Plex Operation Guide | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__plex-setup-guide.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__plex-setup-guide.html.md",
+      "chars": 5804,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/webtorrent-feature.html",
+      "title": "How \u2018\u2019Share via link\u201c works | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__webtorrent-feature.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__webtorrent-feature.html.md",
+      "chars": 6862,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/llm-manual-download.html",
+      "title": "How to Manually Download the Large Language Model | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__llm-manual-download.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__llm-manual-download.html.md",
+      "chars": 4358,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/password-recovery.html",
+      "title": "How to recover your password | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__password-recovery.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__password-recovery.html.md",
+      "chars": 4393,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/remote-id.html",
+      "title": "Get Network ID | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__remote-id.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__remote-id.html.md",
+      "chars": 4816,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/nas-transfer-speed-troubleshooting.html",
+      "title": "How to achieve the fastest transfer speed with the Zima device | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__nas-transfer-speed-troubleshooting.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__nas-transfer-speed-troubleshooting.html.md",
+      "chars": 6177,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/samba-member-setup.html",
+      "title": "Samba with Multi-User | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__samba-member-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__samba-member-setup.html.md",
+      "chars": 7265,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zimaclient-install.html",
+      "title": "How to download and install ZimaClient | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zimaclient-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zimaclient-install.html.md",
+      "chars": 7697,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/raid6-setup.html",
+      "title": "How to Create Raid6 on ZimaOS? | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__raid6-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__raid6-setup.html.md",
+      "chars": 5958,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/immich-photo-backup.html",
+      "title": "Immich's Guide\uff1a Step-by-step to efficient photo backup! | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__immich-photo-backup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__immich-photo-backup.html.md",
+      "chars": 9155,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/iscsi-guide.html",
+      "title": "iSCSI usage tutorial | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__iscsi-guide.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__iscsi-guide.html.md",
+      "chars": 6031,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/setup-emby-server.html",
+      "title": "How to setup an emby server on ZimaOS? | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__setup-emby-server.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__setup-emby-server.html.md",
+      "chars": 10143,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/pi-hole-setup.html",
+      "title": "Pi-hole Deployment Guide on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__pi-hole-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__pi-hole-setup.html.md",
+      "chars": 7825,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/radarr-setup.html",
+      "title": "Deploy Radarr in ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__radarr-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__radarr-setup.html.md",
+      "chars": 8274,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/system-recovery.html",
+      "title": "ZimaOS System Quick Recovery Guide | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__system-recovery.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__system-recovery.html.md",
+      "chars": 6229,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/dlna-server-setup.html",
+      "title": "How to Create a Home Media Center with ZimaCube and DLNA\uff1f | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__dlna-server-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__dlna-server-setup.html.md",
+      "chars": 6341,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/time-machine-backup.html",
+      "title": "How do I back up files from my Mac to ZimaCube using Time Machine? | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__time-machine-backup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__time-machine-backup.html.md",
+      "chars": 6746,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/nfs-on-zimaos.html",
+      "title": "How to use NFS on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__nfs-on-zimaos.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__nfs-on-zimaos.html.md",
+      "chars": 8226,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/deploy-deepseek-r1.html",
+      "title": "Deploy Deepseek R1 on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__deploy-deepseek-r1.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__deploy-deepseek-r1.html.md",
+      "chars": 8942,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/iscsi-setup.html",
+      "title": "Getting Started with iSCSI on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__iscsi-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__iscsi-setup.html.md",
+      "chars": 9227,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zimaos-qts-two-way-sync-guide.html",
+      "title": "ZimaOS & QTS Two-Way Sync Guide | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zimaos-qts-two-way-sync-guide.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zimaos-qts-two-way-sync-guide.html.md",
+      "chars": 6459,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/smb-troubleshooting.html",
+      "title": "SMB Help Document | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__smb-troubleshooting.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__smb-troubleshooting.html.md",
+      "chars": 7410,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zimaos-search.html",
+      "title": "How does ZimaOS-Search work | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zimaos-search.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zimaos-search.html.md",
+      "chars": 8445,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/raid-rebuild-after-reinstall.html",
+      "title": "Rebuilding RAID after reinstalling the system | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__raid-rebuild-after-reinstall.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__raid-rebuild-after-reinstall.html.md",
+      "chars": 5423,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/frigate-ollama-setup.html",
+      "title": "Implementing Frigate+Olama Screen AI Description with ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__frigate-ollama-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__frigate-ollama-setup.html.md",
+      "chars": 12651,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/enable-ai.html",
+      "title": "Enable AI search | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__enable-ai.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__enable-ai.html.md",
+      "chars": 10507,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/enable-intel-ax210.html",
+      "title": "How to Enable the Intel AX210 Wi-Fi Module on ZimaOS\uff1f | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__enable-intel-ax210.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__enable-intel-ax210.html.md",
+      "chars": 5582,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-use-3-2-1-backup-on-zimaos.html",
+      "title": "How to Use 3-2-1 Backup on ZimaOS\uff1f | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__how-to-use-3-2-1-backup-on-zimaos.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__how-to-use-3-2-1-backup-on-zimaos.html.md",
+      "chars": 7738,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/casaos-to-zimaos-migration.html",
+      "title": "Migrate from CasaOS to ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__casaos-to-zimaos-migration.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__casaos-to-zimaos-migration.html.md",
+      "chars": 13533,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/ups-setup.html",
+      "title": "How to Use a UPS (Uninterruptible Power Supply) in ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__ups-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__ups-setup.html.md",
+      "chars": 8498,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/install-zimaos-on-proxmox-ve.html",
+      "title": "Install ZimaOS on Proxmox VE Using the ISO Image | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__install-zimaos-on-proxmox-ve.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__install-zimaos-on-proxmox-ve.html.md",
+      "chars": 8244,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/openclaw-agent-setup.html",
+      "title": "How to Deploy OpenClaw | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__openclaw-agent-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__openclaw-agent-setup.html.md",
+      "chars": 11264,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/hermes-agent-setup.html",
+      "title": "How to Configure Hermes Agent | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__hermes-agent-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__hermes-agent-setup.html.md",
+      "chars": 10863,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/ssh-setup.html",
+      "title": "SSH Setting | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__ssh-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__ssh-setup.html.md",
+      "chars": 4803,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/networking.html",
+      "title": "\u6587\u7ae0\u6807\u9898 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__networking.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__networking.html.md",
+      "chars": 4006,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/python-setup.html",
+      "title": "Setup Python | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__python-setup.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__python-setup.html.md",
+      "chars": 5201,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/docker-app-publishing.html",
+      "title": "Build Apps | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__docker-app-publishing.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__docker-app-publishing.html.md",
+      "chars": 19020,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/7th-bay-led.html",
+      "title": "7th Bay LED | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__7th-bay-led.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__7th-bay-led.html.md",
+      "chars": 11563,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/offline-install.html",
+      "title": "Update offline | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__offline-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__offline-install.html.md",
+      "chars": 4899,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/supported-disk-formats.html",
+      "title": "List of disk formats supported | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__supported-disk-formats.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__supported-disk-formats.html.md",
+      "chars": 5371,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-contribute.html",
+      "title": "How to Contribute | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__how-to-contribute.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__how-to-contribute.html.md",
+      "chars": 4286,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/contributions.html",
+      "title": "Drivers suggested by community users have been implemented | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__contributions.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__contributions.html.md",
+      "chars": 5895,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/syncthing-install.html",
+      "title": "A Simple Guide to Installing Syncthing on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__syncthing-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__syncthing-install.html.md",
+      "chars": 7902,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/paperless-ngx-install.html",
+      "title": "A Comprehensive Guide to Installing Paperless-ngx on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__paperless-ngx-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__paperless-ngx-install.html.md",
+      "chars": 9188,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/paperless-ai-install.html",
+      "title": "A Comprehensive Guide to Installing Paperless\u2011AI on ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__paperless-ai-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__paperless-ai-install.html.md",
+      "chars": 9764,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/azuracast-install.html",
+      "title": "A Comprehensive Guide to Installing AzuraCast on ZimaOS via the Command Line | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__azuracast-install.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__azuracast-install.html.md",
+      "chars": 8659,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zabbix-install-guide.html",
+      "title": "Zabbix Installation Guide for ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zabbix-install-guide.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zabbix-install-guide.html.md",
+      "chars": 31438,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-5-1.html",
+      "title": "ZimaOS V1.5.1 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-5-1.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-5-1.html.md",
+      "chars": 5269,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-5-0.html",
+      "title": "ZimaOS V1.5.0 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-5-0.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-5-0.html.md",
+      "chars": 5333,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-4-4.html",
+      "title": "ZimaOS v1.4.4 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-4-4.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-4-4.html.md",
+      "chars": 5694,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-4-3.html",
+      "title": "ZimaOS V1.4.3 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-4-3.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-4-3.html.md",
+      "chars": 4683,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-4-2.html",
+      "title": "ZimaOS V1.4.2 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-4-2.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-4-2.html.md",
+      "chars": 6304,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-4-1.html",
+      "title": "ZimaOS V1.4.1 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-4-1.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-4-1.html.md",
+      "chars": 5374,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-4-0.html",
+      "title": "ZimaOS V1.4.0 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-4-0.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-4-0.html.md",
+      "chars": 6385,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-3-3.html",
+      "title": "ZimaOS V1.3.3 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-3-3.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-3-3.html.md",
+      "chars": 5650,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-3-2.html",
+      "title": "ZimaOS V 1.3.2 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-3-2.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-3-2.html.md",
+      "chars": 5342,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-3-1.html",
+      "title": "ZimaOS V 1.3.1 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-3-1.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-3-1.html.md",
+      "chars": 6125,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-3-0.html",
+      "title": "ZimaOS V1.3.0 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-3-0.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-3-0.html.md",
+      "chars": 5572,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/zimaos-v1-2-5-available.html",
+      "title": "ZimaOS V1.2.5 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__zimaos-v1-2-5-available.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__zimaos-v1-2-5-available.html.md",
+      "chars": 5237,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-2-4.html",
+      "title": "ZimaOS V1.2.4 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-2-4.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-2-4.html.md",
+      "chars": 5368,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-2-3.html",
+      "title": "ZimaOS V1.2.3 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-2-3.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-2-3.html.md",
+      "chars": 6561,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/v-1-2-2.html",
+      "title": "ZimaOS V1.2.2 | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__v-1-2-2.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__v-1-2-2.html.md",
+      "chars": 5245,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/ups-compatibility-list.html",
+      "title": "ZimaOS Supported UPS Devices Compatibility List | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__ups-compatibility-list.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__ups-compatibility-list.html.md",
+      "chars": 14923,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/folder-encryption.html",
+      "title": "Encryption Folder in ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__folder-encryption.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__folder-encryption.html.md",
+      "chars": 8107,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/resetnetworksettings.html",
+      "title": "Reset Network Settings | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__resetnetworksettings.html.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__resetnetworksettings.html.md",
+      "chars": 5020,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/how-to-install-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/index.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/get-started.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/features.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/remote-access.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/thunderbolt-direct-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/sync-photos-with-immich.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/media-server-setup-with-jellyfin.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/nvr-camera-server.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/synology-smb-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/cli-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/cloud-drive-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/rsync-backup-clones.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/data-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zfs-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/raid-options.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/synology-to-zimacube-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/how-to-open-ssh-in-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/docker-app-paths.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/plex-setup-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/webtorrent-feature.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/llm-manual-download.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/password-recovery.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/remote-id.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/nas-transfer-speed-troubleshooting.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/samba-member-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zimaclient-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/raid6-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/immich-photo-backup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/iscsi-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/setup-emby-server.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/pi-hole-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/radarr-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/system-recovery.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/dlna-server-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/time-machine-backup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/nfs-on-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/deploy-deepseek-r1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/iscsi-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zimaos-qts-two-way-sync-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/smb-troubleshooting.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zimaos-search.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/raid-rebuild-after-reinstall.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/frigate-ollama-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/enable-ai.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/enable-intel-ax210.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/how-to-use-3-2-1-backup-on-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/casaos-to-zimaos-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/ups-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/install-zimaos-on-proxmox-ve.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/openclaw-agent-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/hermes-agent-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/ssh-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/networking.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/python-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/docker-app-publishing.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/7th-bay-led.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/offline-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/supported-disk-formats.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/how-to-contribute.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/contributions.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/syncthing-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/paperless-ngx-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/paperless-ai-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/azuracast-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zabbix-install-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-5-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-5-0.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-4-4.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-4-3.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-4-2.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-4-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-4-0.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-3-3.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-3-2.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-3-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-3-0.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/zimaos-v1-2-5-available.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-2-4.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-2-3.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/v-1-2-2.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/ups-compatibility-list.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/folder-encryption.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/index/resetnetworksettings.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos",
+      "title": "How to Install ZimaOS | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__how-to-install-zimaos.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__how-to-install-zimaos.md",
+      "chars": 6921,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/Get-Started",
+      "title": "Get Started | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__Get-Started.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__Get-Started.md",
+      "chars": 13929,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/Romote-Access",
+      "title": "Remote Access | Zimaspace Docs",
+      "raw": "docs/zimaos-official/raw/docs__zimaos__Romote-Access.html",
+      "markdown": "docs/zimaos-official/pages/docs__zimaos__Romote-Access.md",
+      "chars": 6472,
+      "status": "ok"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/index.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/get-started.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/how-to-install-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/features.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/remote-access.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/thunderbolt-direct-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/sync-photos-with-immich.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/media-server-setup-with-jellyfin.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/nvr-camera-server.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/synology-smb-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/cli-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/cloud-drive-connect.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/rsync-backup-clones.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/data-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/zfs-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/raid-options.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/synology-to-zimacube-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/how-to-open-ssh-in-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/docker-app-paths.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/plex-setup-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/webtorrent-feature.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/llm-manual-download.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/password-recovery.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/remote-id.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/nas-transfer-speed-troubleshooting.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/samba-member-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/zimaclient-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/raid6-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/immich-photo-backup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/iscsi-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/setup-emby-server.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/pi-hole-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/radarr-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/system-recovery.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/dlna-server-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/time-machine-backup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/nfs-on-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/deploy-deepseek-r1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/iscsi-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/zimaos-qts-two-way-sync-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/smb-troubleshooting.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/zimaos-search.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/raid-rebuild-after-reinstall.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/frigate-ollama-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/enable-ai.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/enable-intel-ax210.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/how-to-use-3-2-1-backup-on-zimaos.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/casaos-to-zimaos-migration.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/ups-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/install-zimaos-on-proxmox-ve.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/openclaw-agent-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/hermes-agent-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/ssh-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/networking.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/python-setup.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/docker-app-publishing.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/7th-bay-led.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/offline-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/supported-disk-formats.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/how-to-contribute.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/contributions.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/syncthing-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/paperless-ngx-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/paperless-ai-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/azuracast-install.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/zabbix-install-guide.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-5-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-5-0.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-4-4.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-4-3.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-4-2.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-4-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-4-0.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-3-3.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-3-2.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html/v-1-3-1.html",
+      "status": "error",
+      "error": "HTTP Error 404: Not Found"
+    }
+  ]
+}

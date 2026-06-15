@@ -1,0 +1,109 @@
+# ZimaBrain CE - private Git safety ignore
+
+# Checkpoints / backups
+versions/
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.bak
+*.backup
+
+# Runtime / session exports
+session_exports/
+exports/
+downloads/
+tmp/
+temp/
+
+# Logs
+logs/
+*.log
+*.out
+*.err
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+*.secret
+*.secrets
+secrets/
+private/
+credentials/
+credentials.json
+token.json
+
+# Raw source data not for Git
+data/raw/
+raw/
+raw_app_store/
+raw_manual_pages/
+manual_pages_raw/
+app_store_raw/
+
+# Private evidence / uploaded diagnostics
+evidence/
+private_evidence/
+uploads/
+reports/private/
+reports/evidence/
+
+# Local database/cache/index files
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+cache/
+indexes/
+.vectorstore/
+*.faiss
+
+# Node / frontend cache if added later
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local generated reports
+reports/
+release/
+
+# Old local backup/scratch files
+Dockerfile.before-*
+docker-compose.yml.before-*
+docker-compose.yml.bak-*
+PY
+from
+
+# Local timestamped backup files anywhere in project
+*.bak-*
+
+# Large raw documentation/source downloads
+docs/app-store/raw/
+docs/app-store/downloads/
+docs/zimaos-official/raw/
+*.gif
+*.psd
+
+# Local pre-change backup files
+*.before-*
+*.streamlit-backup
+*.before-flask

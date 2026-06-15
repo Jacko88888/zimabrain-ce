@@ -1,0 +1,88 @@
+# ZimaOS Official Manual Clean Index
+
+Clean pages: 84
+
+- 7th Bay LED | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/7th-bay-led.html | docs/zimaos-official/pages/docs__zimaos__7th-bay-led.html.md
+- A Comprehensive Guide to Installing AzuraCast on ZimaOS via the Command Line | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/azuracast-install.html | docs/zimaos-official/pages/docs__zimaos__azuracast-install.html.md
+- A Comprehensive Guide to Installing Paperless-ngx on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/paperless-ngx-install.html | docs/zimaos-official/pages/docs__zimaos__paperless-ngx-install.html.md
+- A Comprehensive Guide to Installing Paperless‑AI on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/paperless-ai-install.html | docs/zimaos-official/pages/docs__zimaos__paperless-ai-install.html.md
+- A Simple Guide to Installing Syncthing on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/syncthing-install.html | docs/zimaos-official/pages/docs__zimaos__syncthing-install.html.md
+- Build Apps | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/docker-app-publishing.html | docs/zimaos-official/pages/docs__zimaos__docker-app-publishing.html.md
+- Build Multiple Clones using rsync | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/rsync-backup-clones.html | docs/zimaos-official/pages/docs__zimaos__rsync-backup-clones.html.md
+- Data Migration Guide | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/data-migration.html | docs/zimaos-official/pages/docs__zimaos__data-migration.html.md
+- Deploy Deepseek R1 on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/deploy-deepseek-r1.html | docs/zimaos-official/pages/docs__zimaos__deploy-deepseek-r1.html.md
+- Deploy Radarr in ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/radarr-setup.html | docs/zimaos-official/pages/docs__zimaos__radarr-setup.html.md
+- Detailed Plex Operation Guide | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/plex-setup-guide.html | docs/zimaos-official/pages/docs__zimaos__plex-setup-guide.html.md
+- Drivers suggested by community users have been implemented | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/contributions.html | docs/zimaos-official/pages/docs__zimaos__contributions.html.md
+- Enable AI search | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/enable-ai.html | docs/zimaos-official/pages/docs__zimaos__enable-ai.html.md
+- Encryption Folder in ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/folder-encryption.html | docs/zimaos-official/pages/docs__zimaos__folder-encryption.html.md
+- Features-Build Data Station | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/features.html | docs/zimaos-official/pages/docs__zimaos__features.html.md
+- From Synology to ZimaCube，migrate all files! | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/synology-to-zimacube-migration.html | docs/zimaos-official/pages/docs__zimaos__synology-to-zimacube-migration.html.md
+- Get Network ID | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/remote-id.html | docs/zimaos-official/pages/docs__zimaos__remote-id.html.md
+- Get Started | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/get-started.html | docs/zimaos-official/pages/docs__zimaos__get-started.html.md
+- Getting Started with iSCSI on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/iscsi-setup.html | docs/zimaos-official/pages/docs__zimaos__iscsi-setup.html.md
+- How do I back up files from my Mac to ZimaCube using Time Machine? | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/time-machine-backup.html | docs/zimaos-official/pages/docs__zimaos__time-machine-backup.html.md
+- How does ZimaOS-Search work | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zimaos-search.html | docs/zimaos-official/pages/docs__zimaos__zimaos-search.html.md
+- How to achieve the fastest transfer speed with the Zima device | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/nas-transfer-speed-troubleshooting.html | docs/zimaos-official/pages/docs__zimaos__nas-transfer-speed-troubleshooting.html.md
+- How to Configure Hermes Agent | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/hermes-agent-setup.html | docs/zimaos-official/pages/docs__zimaos__hermes-agent-setup.html.md
+- How to connect ZimaCube via Thunderbolt Cable | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/thunderbolt-direct-connect.html | docs/zimaos-official/pages/docs__zimaos__thunderbolt-direct-connect.html.md
+- How to Contribute | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/how-to-contribute.html | docs/zimaos-official/pages/docs__zimaos__how-to-contribute.html.md
+- How to Create a Home Media Center with ZimaCube and DLNA？ | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/dlna-server-setup.html | docs/zimaos-official/pages/docs__zimaos__dlna-server-setup.html.md
+- How to Create Raid6 on ZimaOS? | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/raid6-setup.html | docs/zimaos-official/pages/docs__zimaos__raid6-setup.html.md
+- How to Deploy OpenClaw | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/openclaw-agent-setup.html | docs/zimaos-official/pages/docs__zimaos__openclaw-agent-setup.html.md
+- How to download and install ZimaClient | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zimaclient-install.html | docs/zimaos-official/pages/docs__zimaos__zimaclient-install.html.md
+- How to Enable SSH in ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/how-to-open-ssh-in-zimaos.html | docs/zimaos-official/pages/docs__zimaos__how-to-open-ssh-in-zimaos.html.md
+- How to Enable the Intel AX210 Wi-Fi Module on ZimaOS？ | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/enable-intel-ax210.html | docs/zimaos-official/pages/docs__zimaos__enable-intel-ax210.html.md
+- How to Experience immich on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/sync-photos-with-immich.html | docs/zimaos-official/pages/docs__zimaos__sync-photos-with-immich.html.md
+- How to Install ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/how-to-install-zimaos.html | docs/zimaos-official/pages/docs__zimaos__how-to-install-zimaos.html.md
+- How to Manually Download the Large Language Model | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/llm-manual-download.html | docs/zimaos-official/pages/docs__zimaos__llm-manual-download.html.md
+- How to recover your password | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/password-recovery.html | docs/zimaos-official/pages/docs__zimaos__password-recovery.html.md
+- How to setup an emby server on ZimaOS? | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/setup-emby-server.html | docs/zimaos-official/pages/docs__zimaos__setup-emby-server.html.md
+- How to understand Docker App's paths On ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/docker-app-paths.html | docs/zimaos-official/pages/docs__zimaos__docker-app-paths.html.md
+- How to Use 3-2-1 Backup on ZimaOS？ | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/how-to-use-3-2-1-backup-on-zimaos.html | docs/zimaos-official/pages/docs__zimaos__how-to-use-3-2-1-backup-on-zimaos.html.md
+- How to Use a UPS (Uninterruptible Power Supply) in ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/ups-setup.html | docs/zimaos-official/pages/docs__zimaos__ups-setup.html.md
+- How to use CLI to wander on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/cli-guide.html | docs/zimaos-official/pages/docs__zimaos__cli-guide.html.md
+- How to use NFS on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/nfs-on-zimaos.html | docs/zimaos-official/pages/docs__zimaos__nfs-on-zimaos.html.md
+- How to Watch Videos Anywhere with Jellyfin Media Server | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/media-server-setup-with-jellyfin.html | docs/zimaos-official/pages/docs__zimaos__media-server-setup-with-jellyfin.html.md
+- How ‘’Share via link“ works | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/webtorrent-feature.html | docs/zimaos-official/pages/docs__zimaos__webtorrent-feature.html.md
+- Immich's Guide： Step-by-step to efficient photo backup! | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/immich-photo-backup.html | docs/zimaos-official/pages/docs__zimaos__immich-photo-backup.html.md
+- Implementing Frigate+Olama Screen AI Description with ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/frigate-ollama-setup.html | docs/zimaos-official/pages/docs__zimaos__frigate-ollama-setup.html.md
+- Install ZimaOS on Proxmox VE Using the ISO Image | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/install-zimaos-on-proxmox-ve.html | docs/zimaos-official/pages/docs__zimaos__install-zimaos-on-proxmox-ve.html.md
+- iSCSI usage tutorial | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/iscsi-guide.html | docs/zimaos-official/pages/docs__zimaos__iscsi-guide.html.md
+- Link Synology and SMB Shares | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/synology-smb-connect.html | docs/zimaos-official/pages/docs__zimaos__synology-smb-connect.html.md
+- List of disk formats supported | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/supported-disk-formats.html | docs/zimaos-official/pages/docs__zimaos__supported-disk-formats.html.md
+- Migrate from CasaOS to ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/casaos-to-zimaos-migration.html | docs/zimaos-official/pages/docs__zimaos__casaos-to-zimaos-migration.html.md
+- More RAID Options | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/raid-options.html | docs/zimaos-official/pages/docs__zimaos__raid-options.html.md
+- NVR Camera Server | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/nvr-camera-server.html | docs/zimaos-official/pages/docs__zimaos__nvr-camera-server.html.md
+- Pi-hole Deployment Guide on ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/pi-hole-setup.html | docs/zimaos-official/pages/docs__zimaos__pi-hole-setup.html.md
+- Rebuilding RAID after reinstalling the system | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/raid-rebuild-after-reinstall.html | docs/zimaos-official/pages/docs__zimaos__raid-rebuild-after-reinstall.html.md
+- Remote Access | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/remote-access.html | docs/zimaos-official/pages/docs__zimaos__remote-access.html.md
+- Reset Network Settings | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/resetnetworksettings.html | docs/zimaos-official/pages/docs__zimaos__resetnetworksettings.html.md
+- Samba with Multi-User | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/samba-member-setup.html | docs/zimaos-official/pages/docs__zimaos__samba-member-setup.html.md
+- Seamlessly Integrate Cloud and Edge for Total Data Management | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/cloud-drive-connect.html | docs/zimaos-official/pages/docs__zimaos__cloud-drive-connect.html.md
+- Setup Python | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/python-setup.html | docs/zimaos-official/pages/docs__zimaos__python-setup.html.md
+- SMB Help Document | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/smb-troubleshooting.html | docs/zimaos-official/pages/docs__zimaos__smb-troubleshooting.html.md
+- SSH Setting | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/ssh-setup.html | docs/zimaos-official/pages/docs__zimaos__ssh-setup.html.md
+- Update offline | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/offline-install.html | docs/zimaos-official/pages/docs__zimaos__offline-install.html.md
+- Welcome to Zima Space | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos | docs/zimaos-official/pages/docs__zimaos.md
+- Zabbix Installation Guide for ZimaOS | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zabbix-install-guide.html | docs/zimaos-official/pages/docs__zimaos__zabbix-install-guide.html.md
+- ZFS on ZimaCube | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zfs-setup.html | docs/zimaos-official/pages/docs__zimaos__zfs-setup.html.md
+- ZimaOS & QTS Two-Way Sync Guide | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zimaos-qts-two-way-sync-guide.html | docs/zimaos-official/pages/docs__zimaos__zimaos-qts-two-way-sync-guide.html.md
+- ZimaOS Supported UPS Devices Compatibility List | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/ups-compatibility-list.html | docs/zimaos-official/pages/docs__zimaos__ups-compatibility-list.html.md
+- ZimaOS System Quick Recovery Guide | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/system-recovery.html | docs/zimaos-official/pages/docs__zimaos__system-recovery.html.md
+- ZimaOS V 1.3.1 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-3-1.html | docs/zimaos-official/pages/docs__zimaos__v-1-3-1.html.md
+- ZimaOS V 1.3.2 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-3-2.html | docs/zimaos-official/pages/docs__zimaos__v-1-3-2.html.md
+- ZimaOS V1.2.2 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-2-2.html | docs/zimaos-official/pages/docs__zimaos__v-1-2-2.html.md
+- ZimaOS V1.2.3 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-2-3.html | docs/zimaos-official/pages/docs__zimaos__v-1-2-3.html.md
+- ZimaOS V1.2.4 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-2-4.html | docs/zimaos-official/pages/docs__zimaos__v-1-2-4.html.md
+- ZimaOS V1.2.5 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/zimaos-v1-2-5-available.html | docs/zimaos-official/pages/docs__zimaos__zimaos-v1-2-5-available.html.md
+- ZimaOS V1.3.0 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-3-0.html | docs/zimaos-official/pages/docs__zimaos__v-1-3-0.html.md
+- ZimaOS V1.3.3 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-3-3.html | docs/zimaos-official/pages/docs__zimaos__v-1-3-3.html.md
+- ZimaOS V1.4.0 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-4-0.html | docs/zimaos-official/pages/docs__zimaos__v-1-4-0.html.md
+- ZimaOS V1.4.1 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-4-1.html | docs/zimaos-official/pages/docs__zimaos__v-1-4-1.html.md
+- ZimaOS V1.4.2 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-4-2.html | docs/zimaos-official/pages/docs__zimaos__v-1-4-2.html.md
+- ZimaOS V1.4.3 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-4-3.html | docs/zimaos-official/pages/docs__zimaos__v-1-4-3.html.md
+- ZimaOS v1.4.4 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-4-4.html | docs/zimaos-official/pages/docs__zimaos__v-1-4-4.html.md
+- ZimaOS V1.5.0 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-5-0.html | docs/zimaos-official/pages/docs__zimaos__v-1-5-0.html.md
+- ZimaOS V1.5.1 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/v-1-5-1.html | docs/zimaos-official/pages/docs__zimaos__v-1-5-1.html.md
+- 文章标题 | Zimaspace Docs | https://www.zimaspace.com/docs/zimaos/networking.html | docs/zimaos-official/pages/docs__zimaos__networking.html.md

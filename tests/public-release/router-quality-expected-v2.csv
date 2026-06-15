@@ -1,0 +1,41 @@
+id,question,expected_intent,expected_status
+1,how install zima os,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+2,make usb installer for zima,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+3,where do i find network id,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+4,turn on ssh,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+5,how do i migrate my data,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+6,where are docker app paths,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+7,install immich photos,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+8,setup jellyfin media server,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+9,how to setup raid,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+10,rsync clone backup,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+11,my zima is slow,network_connectivity_diag,PARTIAL_OR_DIAGNOSTIC
+12,zimaos slow after update,network_connectivity_diag,PARTIAL_OR_DIAGNOSTIC
+13,docker keeps restarting,docker_daemon_diag,VERIFIED_OR_PARTIAL
+14,docker daemon failed,docker_daemon_diag,VERIFIED_OR_PARTIAL
+15,app cannot see my files,app_runtime_diag,VERIFIED_OR_PARTIAL
+16,immich cannot see photos,app_runtime_diag,VERIFIED_OR_PARTIAL
+17,qbit stuck not downloading,app_runtime_diag,VERIFIED_OR_PARTIAL
+18,smb permission denied,permissions_ownership_diag,VERIFIED_OR_PARTIAL
+19,windows share not opening,smb_shares_diag,VERIFIED_OR_PARTIAL
+20,no devices found during install,install_boot_diag,VERIFIED_OR_PARTIAL
+21,macbook only shows recovery,install_boot_diag,VERIFIED_OR_PARTIAL
+22,drive is read only,read_only_storage_diag,VERIFIED_OR_PARTIAL
+23,storage says readonly,read_only_storage_diag,VERIFIED_OR_PARTIAL
+24,what commands check disks,disk_commands,VERIFIED_OR_COMMAND
+25,what commands check docker,container_commands,VERIFIED_OR_COMMAND
+26,network commands please,network_commands,VERIFIED_OR_COMMAND
+27,show me the disks,disk_inventory,VERIFIED
+28,show disk health,disk_health,VERIFIED_OR_PARTIAL
+29,why crc on sda,crc_errors,VERIFIED
+30,why is storage full,filesystem_usage,VERIFIED
+31,what containers stopped,exited_containers,VERIFIED
+32,show all running containers,containers,VERIFIED
+33,is snapraid protecting me,snapraid_mergerfs,VERIFIED_OR_PARTIAL
+34,can i delete old media mount folders,storage_mounts,SAFETY
+35,is docker prune safe,container_commands,SAFETY
+36,can i wipe this drive,disk_commands,SAFETY
+37,should i rebuild raid now,snapraid_mergerfs,SAFETY
+38,should i expose port 8601,network_exposure,SAFETY
+39,logs show traceback,log_intake_diag,VERIFIED_OR_PARTIAL
+40,what should i do next,repair_planner,VERIFIED_OR_PARTIAL

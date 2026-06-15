@@ -1,0 +1,11 @@
+store_name,store_type,source_url,notes
+CasaOS-LinuxServer-AppStore,third-party,https://casaos-appstore.paodayag.dev/linuxserver.zip,100+ LinuxServer.io images
+CasaOS-AppStore-Play,third-party,https://play.cuse.eu.org/Cp0204-AppStore-Play.zip,Chinese/local apps using latest tag
+CasaOS-AppStore-Play-arm,third-party,https://play.cuse.eu.org/Cp0204-AppStore-Play-arm.zip,armv7 device-specific source
+CasaOS-Coolstore,third-party,https://casaos-appstore.paodayag.dev/coolstore.zip,Coolstore community apps
+CasaOS-Edge-AppStore,third-party,https://paodayag.dev/casaos-appstore-edge.zip,Forked official CasaOS appstore with updated versions
+CasaOS-HomeAutomation-AppStore,third-party,https://github.com/mr-manuel/CasaOS-HomeAutomation-AppStore/archive/refs/tags/latest.zip,Home automation apps
+Big-Bear-CasaOS-App-Store,third-party,https://github.com/bigbeartechworld/big-bear-casaos/archive/refs/heads/master.zip,Community store by BigBearTechWorld
+TMC-Community-App-Store,third-party,https://github.com/mariosemes/CasaOS-TMCstore/archive/refs/heads/main.zip,Community-driven TMC store
+CasaOS-Pentest-Docker-AppStore,third-party,https://github.com/arch3rPro/Pentest-Docker/archive/refs/heads/master.zip,Pentest tools apps
+JSDs-Generative-AI-Workbench,third-party,https://github.com/justserdar/ZimaOS-AppStore/archive/refs/tags/latest-v0.0.8.zip,AI Workbench apps, GPU dependent

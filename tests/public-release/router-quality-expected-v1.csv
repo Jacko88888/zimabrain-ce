@@ -1,0 +1,36 @@
+id,question,expected_intent,expected_status
+1,How to Install ZimaOS,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+2,Create a Bootable USB Drive,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+3,Install Zima Client,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+4,Get Network ID,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+5,How to Enable SSH in ZimaOS,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+6,Data Migration,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+7,Build Multiple Clones using rsync,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+8,How to understand Docker App's paths On ZimaOS,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+9,RAID Array Setup,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+10,Installing immich on ZimaOS,manual_knowledge,OFFICIAL_MANUAL_REFERENCE
+11,command to check network,network_commands,VERIFIED_OR_COMMAND
+12,command to check disks,disk_commands,VERIFIED_OR_COMMAND
+13,how to check my disks,disk_commands,VERIFIED_OR_COMMAND
+14,command to check containers,container_commands,VERIFIED_OR_COMMAND
+15,command to check system uptime,system_commands,VERIFIED_OR_COMMAND
+16,show dashboard alerts,dashboard_alerts,VERIFIED
+17,explain the sda CRC errors,crc_errors,VERIFIED
+18,why is sdd filesystem usage 100%,filesystem_usage,VERIFIED
+19,running containers,containers,VERIFIED
+20,which containers are exited,exited_containers,VERIFIED
+21,is my system protected,snapraid_mergerfs,VERIFIED_OR_PARTIAL
+22,show disk inventory,disk_inventory,VERIFIED
+23,which disks are healthy,disk_health,VERIFIED_OR_PARTIAL
+24,explain failed systemd unit,failed_units,VERIFIED
+25,why is Docker daemon not working,docker_daemon_diag,VERIFIED_OR_PARTIAL
+26,ZimaOS is slow,network_connectivity_diag,PARTIAL_OR_DIAGNOSTIC
+27,Jellyfin is not using GPU,gpu_ai_runtime,VERIFIED_OR_PARTIAL
+28,qBittorrent is not downloading,app_runtime_diag,VERIFIED_OR_PARTIAL
+29,I cannot access SMB share,smb_shares_diag,VERIFIED_OR_PARTIAL
+30,ZimaOS install cannot find disk,install_boot_diag,VERIFIED_OR_PARTIAL
+31,Should I delete /media folders,storage_mounts,SAFETY
+32,Should I run docker system prune,container_commands,SAFETY
+33,Should I format this disk,disk_commands,SAFETY
+34,Can I repair SnapRAID now,snapraid_mergerfs,SAFETY
+35,Can I expose this port publicly,network_exposure,SAFETY
