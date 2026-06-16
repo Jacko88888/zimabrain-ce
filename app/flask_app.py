@@ -1,5 +1,9 @@
 import html
 import urllib.request
+import json
+import socket
+import os
+from pathlib import Path
 import subprocess
 import re
 from datetime import datetime
@@ -24,13 +28,305 @@ def esc(value):
     return html.escape(str(value or ""))
 
 
+def read_text_file(path, default=""):
+    try:
+        return Path(path).read_text(errors="replace").strip()
+    except Exception:
+        return default
+
+
+def decode_mount_path(path):
+    return path.replace("\\040", " ")
+
+
+def detected_host_name():
+    return read_text_file("/host/etc/hostname") or read_text_file("/etc/hostname") or "Local-ZimaOS-Device"
+
+
+def detected_product_name():
+    product = read_text_file("/host/sys/devices/virtual/dmi/id/product_name") or read_text_file("/sys/devices/virtual/dmi/id/product_name")
+    if product and product.lower() not in ("default string", "to be filled by o.e.m."):
+        return product
+    return detected_host_name()
+
+
+def human_size(num):
+    try:
+        num = float(num)
+        for unit in ["B", "K", "M", "G", "T", "P"]:
+            if num < 1024:
+                return f"{num:.1f}{unit}" if unit != "B" else f"{int(num)}B"
+            num /= 1024
+    except Exception:
+        pass
+    return "N/A"
+
+
+def base_device_name(name):
+    name = str(name or "")
+    if re.match(r"^nvme\d+n\d+p\d+$", name):
+        return re.sub(r"p\d+$", "", name)
+    if re.match(r"^mmcblk\d+p\d+$", name):
+        return re.sub(r"p\d+$", "", name)
+    return re.sub(r"\d+$", "", name)
+
+
+def preferred_mount(existing, candidate):
+    if not existing or existing == "not mounted":
+        return candidate
+    priority = ("/media/", "/DATA/.media/", "/DATA", "/var/lib/casaos_data", "/")
+    existing_score = next((i for i, p in enumerate(priority) if existing.startswith(p)), 99)
+    candidate_score = next((i for i, p in enumerate(priority) if candidate.startswith(p)), 99)
+    return candidate if candidate_score < existing_score else existing
+
+
+def collect_mounts():
+    mounts = {}
+    proc_mounts = read_text_file("/host/proc/1/mounts") or read_text_file("/host/proc/mounts")
+
+    for line in proc_mounts.splitlines():
+        parts = line.split()
+        if len(parts) < 2 or not parts[0].startswith("/dev/"):
+            continue
+
+        dev = parts[0].replace("/dev/", "")
+        mount = decode_mount_path(parts[1])
+
+        mounts[dev] = preferred_mount(mounts.get(dev), mount)
+
+        parent = base_device_name(dev)
+        if parent != dev:
+            mounts[parent] = preferred_mount(mounts.get(parent), mount)
+
+    mdstat = read_text_file("/host/proc/mdstat")
+    for line in mdstat.splitlines():
+        line = line.strip()
+        if " : active " not in line:
+            continue
+
+        md_name = line.split(":", 1)[0].strip()
+        md_mount = mounts.get(md_name)
+        if not md_mount:
+            continue
+
+        for member in re.findall(r"\b([a-z]+[a-z]*\d*|nvme\d+n\d+|mmcblk\d+)\[\d+\]", line):
+            mounts[member] = preferred_mount(mounts.get(member), md_mount)
+
+    return mounts
+
+
+def collect_native_disks():
+    mounts = collect_mounts()
+    rows = []
+    root = Path("/host/sys/block")
+
+    if not root.exists():
+        root = Path("/sys/block")
+
+    skip_prefixes = ("loop", "ram", "zram", "dm-", "md", "nbd")
+    skip_contains = ("boot", "rpmb")
+
+    for dev_path in sorted(root.iterdir(), key=lambda x: x.name):
+        dev = dev_path.name
+        if dev.startswith(skip_prefixes) or any(x in dev for x in skip_contains):
+            continue
+
+        sectors = read_text_file(dev_path / "size")
+        try:
+            size_bytes = int(sectors) * 512
+            if size_bytes <= 0:
+                continue
+            size = human_size(size_bytes)
+        except Exception:
+            size = "N/A"
+
+        model = (
+            read_text_file(dev_path / "device/model")
+            or read_text_file(dev_path / "device/name")
+            or ("System Disk" if dev.startswith("mmcblk") else "Disk")
+        )
+
+        rows.append({
+            "device": dev,
+            "model": model,
+            "size": size,
+            "mount": mounts.get(dev, "not mounted"),
+            "health": "N/A",
+            "temp": "N/A",
+            "realloc": "N/A",
+            "pending": "N/A",
+            "crc": "N/A",
+            "power_on": "N/A",
+        })
+
+    return rows
+
+
+def decode_http_chunked(body):
+    out = b""
+    pos = 0
+    while True:
+        end = body.find(b"\r\n", pos)
+        if end == -1:
+            return body
+        try:
+            size = int(body[pos:end].split(b";", 1)[0], 16)
+        except Exception:
+            return body
+        pos = end + 2
+        if size == 0:
+            break
+        out += body[pos:pos + size]
+        pos += size + 2
+    return out
+
+
+def docker_api_get(path):
+    sock_path = "/var/run/docker.sock"
+    if not Path(sock_path).exists():
+        return None
+
+    request = f"GET {path} HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n".encode()
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(3)
+        sock.connect(sock_path)
+        sock.sendall(request)
+        data = b""
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+
+    header, _, body = data.partition(b"\r\n\r\n")
+    if b"transfer-encoding: chunked" in header.lower():
+        body = decode_http_chunked(body)
+
+    return json.loads(body.decode("utf-8", errors="replace"))
+
+
+def collect_native_containers():
+    try:
+        data = docker_api_get("/containers/json?all=1") or []
+    except Exception:
+        data = []
+
+    rows = []
+    for item in data:
+        names = item.get("Names") or []
+        name = names[0].lstrip("/") if names else item.get("Id", "")[:12]
+        rows.append({
+            "name": name,
+            "state": item.get("State", "unknown"),
+            "image": item.get("Image", "unknown"),
+        })
+    return rows
+
+
+def build_native_report(reason=""):
+    disks = collect_native_disks()
+    containers = collect_native_containers()
+
+    lines = []
+    lines.append("===== RAW DASHBOARD ALERTS =====")
+    lines.append("INFO: Native ZimaBrain local evidence fallback generated.")
+    if reason:
+        lines.append(f"INFO: {reason}")
+
+    lines.append("")
+    lines.append("===== DISKS / SMART SUMMARY =====")
+    lines.append("Device | Model | Size | Mount | Health | Temp | Realloc | Pending | CRC | Power_On")
+    lines.append("--- | --- | --- | --- | --- | --- | --- | --- | --- | ---")
+    for d in disks:
+        lines.append(
+            f"{d['device']} | {d['model']} | {d['size']} | {d['mount']} | {d['health']} | "
+            f"{d['temp']} | {d['realloc']} | {d['pending']} | {d['crc']} | {d['power_on']}"
+        )
+
+    lines.append("")
+    lines.append("===== CONTAINERS =====")
+    lines.append("Name | State | Image")
+    lines.append("--- | --- | ---")
+    for c in containers:
+        lines.append(f"{c['name']} | {c['state']} | {c['image']}")
+
+    lines.append("")
+    lines.append("===== NATIVE FALLBACK STATUS =====")
+    lines.append(f"Device: {detected_product_name()}")
+    lines.append(f"Disks parsed from host sysfs: {len(disks)}")
+    lines.append(f"Containers parsed from Docker socket: {len(containers)}")
+
+    return "\n".join(lines)
+
+
+def live_visual_available():
+    try:
+        host = request.host.split(":")[0]
+        urllib.request.urlopen(f"http://{host}:8514", timeout=1).close()
+        return True
+    except Exception:
+        return False
+
+
+def local_zimaos_visual_panel(bundle):
+    if live_visual_available():
+        return f"""
+        <p class="small">Live visual layer detected. If it does not load, the native fallback evidence is still used above.</p>
+        <details>
+          <summary>Show Local ZimaOS Visual</summary>
+          <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
+        </details>
+        """
+
+    disks = bundle.get("disks", [])
+    exited = bundle.get("exited", [])
+    report = bundle.get("report", "")
+    device = detected_product_name()
+
+    disk_html = ""
+    for d in disks:
+        health = esc(d.get("health", "N/A"))
+        disk_html += f"""
+        <div class="card">
+          <div class="card-title">{esc(d.get("device"))}</div>
+          <div class="card-value">{esc(d.get("size"))}</div>
+          <div class="small">{esc(d.get("model"))}</div>
+          <div class="small">Mount: {esc(d.get("mount"))}</div>
+          <div class="small">Health: {health}</div>
+        </div>
+        """
+
+    if not disk_html:
+        disk_html = '<div class="small">No disk evidence parsed yet.</div>'
+
+    status_line = "Native fallback active"
+    if "Native ZimaBrain local evidence fallback generated" in report:
+        status_line = "Native fallback active because live dashboard is not available"
+
+    return f"""
+    <div class="small">{esc(status_line)}</div>
+    <div class="cards">
+      <div class="card"><div class="card-title">Device</div><div class="card-value">{esc(device)}</div><div class="small">Detected from host</div></div>
+      <div class="card"><div class="card-title">Visual Mode</div><div class="card-value">Native</div><div class="small">No external dashboard required</div></div>
+      <div class="card"><div class="card-title">Disks</div><div class="card-value">{len(disks)}</div><div class="small">Host sysfs evidence</div></div>
+      <div class="card"><div class="card-title">Exited Containers</div><div class="card-value">{len(exited)}</div><div class="small">Docker evidence</div></div>
+    </div>
+    <h4>Detected Storage</h4>
+    <div class="cards">{disk_html}</div>
+    """
+
+
 def fetch_dashboard_report():
-    req = urllib.request.Request(
-        DASHBOARD_REPORT_URL,
-        headers={"User-Agent": "ZimaBrain-CE-Flask"},
-    )
-    with urllib.request.urlopen(req, timeout=10) as response:
-        return response.read().decode("utf-8", errors="replace").strip()
+    try:
+        req = urllib.request.Request(
+            DASHBOARD_REPORT_URL,
+            headers={"User-Agent": "ZimaBrain-CE-Flask"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return response.read().decode("utf-8", errors="replace").strip()
+    except Exception as exc:
+        return build_native_report(f"Live dashboard unavailable: {exc}")
 
 
 def parse_dashboard_alerts(report_text):
@@ -1170,12 +1466,9 @@ iframe {{
   </div>
 
   <div class="panel">
-    <h3>Cube Dashboard View</h3>
-    <p class="small">Optional live visual layer. If Zima Client feels slow, use the evidence cards above instead.</p>
-    <details>
-      <summary>Show live Cube Dashboard visual</summary>
-      <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
-    </details>
+    <h3>Local ZimaOS Visual Dashboard</h3>
+    <p class="small">Live visual if available. Native fallback is used automatically on boards without the dashboard container.</p>
+    {local_zimaos_visual_panel(bundle)}
   </div>
 
   <div class="panel">
@@ -1423,12 +1716,9 @@ pre {{
   </div>
 
   <div class="answer-dashboard-panel">
-    <h3>Cube Dashboard View</h3>
-    <div class="small">Optional live visual layer from the verified Cube dashboard.</div>
-    <details>
-      <summary>Show live Cube Dashboard visual</summary>
-      <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
-    </details>
+    <h3>Local ZimaOS Visual Dashboard</h3>
+    <div class="small">Live visual if available. Native fallback is used automatically on boards without the dashboard container.</div>
+    {local_zimaos_visual_panel(bundle)}
   </div>
 
   <div class="actions">
