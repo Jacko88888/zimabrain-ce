@@ -12,7 +12,7 @@ v1.6.0-beta
 - Docker available
 - Docker Compose available
 - Access to the private GitHub repository
-- A free port for the Flask UI
+- Port 8601 available for the ZimaBrain CE web UI
 
 ## Recommended install path
 
@@ -49,11 +49,11 @@ From inside the project folder:
 
 ## Open the UI
 
-Open the mapped Flask port shown in docker ps.
+Open the ZimaBrain CE web UI at: http://<your-zima-ip>:8601
 
 Current Cube development path uses:
 
-    /DATA/AppData/zimabrain-ce-flask-8601
+    /DATA/AppData/zimabrain-ce
 
 Current development UI badge shows:
 
