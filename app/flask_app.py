@@ -280,41 +280,208 @@ def local_zimaos_visual_panel(bundle):
         """
 
     disks = bundle.get("disks", [])
-    exited = bundle.get("exited", [])
     report = bundle.get("report", "")
     device = detected_product_name()
+    containers = collect_native_containers()
+    running = len([c for c in containers if str(c.get("state", "")).lower() == "running"])
+    total = len(containers)
 
     disk_html = ""
     for d in disks:
+        dev = esc(d.get("device"))
+        model = esc(d.get("model"))
+        size = esc(d.get("size"))
+        mount = esc(d.get("mount"))
         health = esc(d.get("health", "N/A"))
         disk_html += f"""
-        <div class="card">
-          <div class="card-title">{esc(d.get("device"))}</div>
-          <div class="card-value">{esc(d.get("size"))}</div>
-          <div class="small">{esc(d.get("model"))}</div>
-          <div class="small">Mount: {esc(d.get("mount"))}</div>
-          <div class="small">Health: {health}</div>
-        </div>
+          <div class="native-drive">
+            <div class="native-drive-head">
+              <span class="native-drive-name">{dev}</span>
+              <span class="native-pill">DATA</span>
+            </div>
+            <div class="native-model">{model}</div>
+            <div class="native-row"><span>SIZE</span><b>{size}</b></div>
+            <div class="native-row"><span>MOUNT</span><b>{mount}</b></div>
+            <div class="native-row"><span>HEALTH</span><b>{health}</b></div>
+          </div>
         """
 
     if not disk_html:
-        disk_html = '<div class="small">No disk evidence parsed yet.</div>'
+        disk_html = '<div class="native-muted">No disk evidence parsed yet.</div>'
+
+    container_html = ""
+    for c in containers[:10]:
+        container_html += f"""
+          <div class="native-line">
+            <span class="native-dot"></span>
+            <span>{esc(c.get("name"))}</span>
+            <b>{esc(c.get("state"))}</b>
+          </div>
+        """
+
+    if not container_html:
+        container_html = '<div class="native-muted">No Docker containers parsed yet.</div>'
 
     status_line = "Native fallback active"
     if "Native ZimaBrain local evidence fallback generated" in report:
         status_line = "Native fallback active because live dashboard is not available"
 
     return f"""
-    <div class="small">{esc(status_line)}</div>
-    <div class="cards">
-      <div class="card"><div class="card-title">Device</div><div class="card-value">{esc(device)}</div><div class="small">Detected from host</div></div>
-      <div class="card"><div class="card-title">Visual Mode</div><div class="card-value">Native</div><div class="small">No external dashboard required</div></div>
-      <div class="card"><div class="card-title">Disks</div><div class="card-value">{len(disks)}</div><div class="small">Host sysfs evidence</div></div>
-      <div class="card"><div class="card-title">Exited Containers</div><div class="card-value">{len(exited)}</div><div class="small">Docker evidence</div></div>
+    <style>
+      .native-zima-wrap {{
+        background: #020806;
+        border: 1px solid #1f4f35;
+        border-radius: 14px;
+        padding: 18px;
+        color: #d9ffe5;
+        box-shadow: inset 0 0 40px rgba(0, 255, 120, 0.04);
+      }}
+      .native-zima-top {{
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid rgba(130, 255, 170, 0.18);
+        padding-bottom: 12px;
+        margin-bottom: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #9cffb8;
+        font-size: 12px;
+      }}
+      .native-zima-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+      }}
+      .native-stat, .native-drive, .native-containers {{
+        background: rgba(8, 20, 14, 0.92);
+        border: 1px solid rgba(130, 255, 170, 0.18);
+        border-radius: 10px;
+        padding: 14px;
+      }}
+      .native-label {{
+        color: #8ba0ad;
+        font-size: 12px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }}
+      .native-value {{
+        font-size: 28px;
+        font-weight: 800;
+        margin-top: 8px;
+        color: #f4fff8;
+      }}
+      .native-drive-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }}
+      .native-drive-head {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }}
+      .native-drive-name {{
+        font-size: 22px;
+        font-weight: 800;
+        color: #ffffff;
+        text-transform: uppercase;
+      }}
+      .native-pill {{
+        border: 1px solid rgba(120, 255, 160, 0.35);
+        color: #8dffad;
+        padding: 2px 7px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+      }}
+      .native-model {{
+        color: #d8ffe2;
+        min-height: 34px;
+        font-size: 13px;
+      }}
+      .native-row {{
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        padding-top: 7px;
+        margin-top: 7px;
+        color: #9badb8;
+        font-size: 12px;
+      }}
+      .native-row b {{
+        color: #f4fff8;
+        text-align: right;
+      }}
+      .native-bottom {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 12px;
+      }}
+      .native-line {{
+        display: grid;
+        grid-template-columns: 16px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        padding: 6px 0;
+        font-size: 13px;
+      }}
+      .native-dot {{
+        width: 7px;
+        height: 7px;
+        background: #8dffad;
+        display: inline-block;
+      }}
+      .native-muted {{
+        color: #9badb8;
+        font-size: 13px;
+      }}
+      @media (max-width: 1100px) {{
+        .native-zima-grid, .native-drive-grid, .native-bottom {{
+          grid-template-columns: 1fr;
+        }}
+      }}
+    </style>
+
+    <div class="native-zima-wrap">
+      <div class="native-zima-top">
+        <div>LOCAL ZIMAOS VISUAL · BUILT INTO ZIMABRAIN CE</div>
+        <div>{esc(device)} · NATIVE MODE</div>
+      </div>
+
+      <div class="native-zima-grid">
+        <div class="native-stat"><div class="native-label">Device</div><div class="native-value">{esc(device)}</div></div>
+        <div class="native-stat"><div class="native-label">Visual Mode</div><div class="native-value">Native</div></div>
+        <div class="native-stat"><div class="native-label">Disks</div><div class="native-value">{len(disks)}</div></div>
+        <div class="native-stat"><div class="native-label">Containers</div><div class="native-value">{running}/{total}</div></div>
+      </div>
+
+      <div class="native-muted">{esc(status_line)}</div>
+
+      <h4>Detected Storage</h4>
+      <div class="native-drive-grid">{disk_html}</div>
+
+      <div class="native-bottom">
+        <div class="native-containers">
+          <h4>Docker State</h4>
+          {container_html}
+        </div>
+        <div class="native-containers">
+          <h4>Native Evidence Source</h4>
+          <div class="native-line"><span class="native-dot"></span><span>Host sysfs</span><b>active</b></div>
+          <div class="native-line"><span class="native-dot"></span><span>Host mounts</span><b>active</b></div>
+          <div class="native-line"><span class="native-dot"></span><span>Docker socket</span><b>active</b></div>
+          <div class="native-line"><span class="native-dot"></span><span>External dashboard</span><b>not required</b></div>
+        </div>
+      </div>
     </div>
-    <h4>Detected Storage</h4>
-    <div class="cards">{disk_html}</div>
     """
+
 
 
 def fetch_dashboard_report():
