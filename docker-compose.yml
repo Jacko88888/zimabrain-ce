@@ -1,19 +1,19 @@
-name: zimabrain-ce-flask-8601
+name: zimabrain-ce
 
 services:
-  zimabrain-ce-flask-8601:
+  zimabrain-ce:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: zimabrain-ce-flask-8601
+    container_name: zimabrain-ce
     restart: unless-stopped
     privileged: true
     pid: host
     ports:
       - "8601:8601"
     volumes:
-      - /DATA/AppData/zimabrain-ce-flask-8601:/data
-      - /DATA/AppData/zimabrain-ce-flask-8601/docs:/app/docs:ro
+      - /DATA/AppData/zimabrain-ce:/data
+      - /DATA/AppData/zimabrain-ce/docs:/app/docs:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /etc/hostname:/host/etc/hostname:ro
@@ -35,7 +35,7 @@ services:
             en_us: ZimaBrain CE data and reports
     labels:
       icon: https://raw.githubusercontent.com/IceWhaleTech/CasaOS-AppStore/main/Apps/HomeAssistant/icon.png
-      title: ZimaBrain CE Flask 8601
+      title: ZimaBrain CE
       description: Reliable ZimaBrain Flask cockpit
       index: /
       scheme: http
