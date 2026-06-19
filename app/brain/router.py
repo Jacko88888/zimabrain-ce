@@ -408,6 +408,31 @@ def classify(question):
     if _contains_phrase(qn, ["macbook", "no devices found"]) or ("install" in qt and ("boot" in qt or "efi" in qt)):
         _score(candidates, "install_boot_question", 9.7, ["intent:diagnose", "entity:install-boot"])
 
+    # App path / media-library questions must use path evidence before generic runtime diagnostics.
+    # Example: Immich/Jellyfin/Nextcloud cannot see photos/media after a ZimaOS path change.
+    try:
+        from brain.layers.media_app_verified_guides import detect_app
+        path_app_detected = detect_app(question)
+    except Exception:
+        path_app_detected = ""
+
+    app_path_words = [
+        "path", "paths", "photo", "photos", "upload", "uploads",
+        "library", "media", "folder", "folders", "mount", "mounted",
+        "bind", "bind mount", "external library", "cannot see", "can't see",
+        "cant see", "not detecting", "not detected", "after zimaos",
+        "/media", "/data", "/usr/src/app/upload"
+    ]
+
+    app_path_profiles = {
+        "immich", "jellyfin", "nextcloud", "plex", "emby",
+        "qbittorrent", "radarr", "sonarr", "sabnzbd"
+    }
+
+    if path_app_detected in app_path_profiles and any(w in ql for w in app_path_words):
+        _score(candidates, "app_storage_path_question", 130.0, ["gate:app-path-hard-route", "entity:app-storage-path", f"profile:{path_app_detected}"])
+        _score(candidates, "docker_bind_mount_question", 125.0, ["gate:app-path-bind-mount-route", "entity:docker-bind", f"profile:{path_app_detected}"])
+
 
 
 
@@ -430,7 +455,7 @@ def classify(question):
             generic_app_detected = ""
 
         if generic_app_detected:
-            _score(candidates, "media_app_verified_guides_question", 82.0, ["gate:generic-app-install-not-os-install", "entity:app"])
+            _score(candidates, "media_app_verified_guides_question", 120.0, ["gate:app-identity-hard-route", "entity:app", f"profile:{generic_app_detected}"])
         elif "zimaos" not in ql and "boot" not in ql and "installer" not in ql:
             _score(candidates, "media_app_verified_guides_question", 40.0, ["gate:generic-app-install-not-os-install", "entity:generic-app"])
 
@@ -471,13 +496,60 @@ def classify(question):
     except Exception:
         app_store_matches = []
 
-    if app_store_matches and any(w in ql for w in app_store_words):
-        _score(candidates, "third_party_app_store_question", 36.0, ["gate:third-party-app-store-index", "source:app-store-index"])
+    if app_store_matches:
+        app_store_intent = any(w in ql for w in app_store_words)
+        install_setup_intent = any(w in ql for w in app_install_words) and not any(w in ql for w in os_install_words)
+
+        try:
+            from brain.layers.media_app_verified_guides import detect_app
+            dedicated_verified_app = detect_app(question)
+        except Exception:
+            dedicated_verified_app = ""
+
+        # Dedicated verified install guides win for known core apps.
+        # Third-party app-store index wins for app-store/source/risk questions,
+        # or for install/setup questions where no dedicated profile exists.
+        if dedicated_verified_app and install_setup_intent and not app_store_intent:
+            _score(candidates, "media_app_verified_guides_question", 120.0, ["gate:verified-app-beats-third-party-index", "entity:app", f"profile:{dedicated_verified_app}"])
+        elif app_store_intent:
+            _score(candidates, "third_party_app_store_question", 90.0, ["gate:third-party-app-store-index", "source:app-store-index", "intent:app-store-source-risk"])
+        elif install_setup_intent and not dedicated_verified_app:
+            _score(candidates, "third_party_app_store_question", 90.0, ["gate:third-party-app-store-index", "source:app-store-index", "priority:app-store-match-before-generic-install"])
 
 
     # Media app verified install/integration guides.
     # This layer handles Immich, Jellyfin, Jellyseerr/Seerr, and JellyBridge in the correct order:
     # storage -> container -> bind mounts -> permissions -> network -> logs -> integration.
+    # Hard priority: Docker bind-mount questions must beat general host storage mount answers.
+    if (
+        ({"docker", "container", "containers"} & qt)
+        and ({"bind", "mount", "mounts", "mounted"} & qt)
+        and ("/media" in ql or "media" in qt or "path" in qt or "paths" in qt)
+    ):
+        _score(candidates, "docker_bind_mount_question", 145.0, ["gate:docker-bind-hard-route", "entity:docker-bind"])
+
+    # Hard priority: permission denied on AppData/Docker paths must not route to weak manual knowledge.
+    if (
+        {"permission", "permissions", "denied", "ownership", "owner", "chown", "chmod", "uid", "gid"} & qt
+        and ("appdata" in qt or "/data/appdata" in ql or "docker" in qt or has_app)
+    ):
+        _score(candidates, "permissions_ownership_question", 145.0, ["gate:permission-hard-route", "entity:permissions"])
+
+    # Hard priority: public exposure questions are network/security risk questions.
+    if (
+        {"expose", "exposed", "public", "publicly", "internet", "wan"} & qt
+        and ("portainer" in qt or "agent" in qt or "docker" in qt or "docker.sock" in ql or "dashboard" in qt)
+    ):
+        _score(candidates, "network_exposure_question", 145.0, ["gate:public-exposure-hard-route", "entity:network-exposure"])
+
+    # Hard priority: command requests mentioning Docker containers/mounts/ports should prefer container verification commands.
+    if (
+        {"command", "commands", "cmd", "terminal", "cli"} & qt
+        and ({"docker", "container", "containers"} & qt)
+        and ({"mount", "mounts", "ports", "port", "bind"} & qt)
+    ):
+        _score(candidates, "container_command_question", 145.0, ["gate:docker-command-hard-route", "entity:container-commands"])
+
     try:
         from brain.layers.media_app_verified_guides import detect_app
         media_app_detected = detect_app(question)

@@ -429,6 +429,14 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
 
+    elif docker_bind_mount_question:
+        layer = docker_bind_mounts.answer(bundle)
+        active_layer = "Docker Bind-Mount Verifier"
+        active_layer_file = "app/brain/layers/docker_bind_mounts.py"
+        out.extend(layer["lines"])
+        next_step = layer["next_step"]
+        forum_summary = layer["forum_summary"]
+
     elif mount_question:
         layer = storage_mounts.answer(bundle)
         active_layer = "Storage Mount Layer"
@@ -453,14 +461,6 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
 
-    elif third_party_app_store_question:
-        layer = third_party_app_store_index.answer(bundle, question)
-        active_layer = "Third-Party App Store Index Layer"
-        active_layer_file = "app/brain/layers/third_party_app_store_index.py"
-        out.extend(layer.get("lines", []))
-        next_step = layer.get("next_step", "Verify the app source, ports, volumes, and permissions before installing.")
-        forum_summary = layer.get("forum_summary", "Third-party app-store guidance only. Verify before installing.")
-
     elif media_app_verified_guides_question:
         layer = media_app_verified_guides.answer(bundle, question)
         active_layer = "App Verified Install Guides Layer"
@@ -471,6 +471,14 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         trust_state_override = layer.get("trust_state")
         trust_title_override = layer.get("trust_title")
         trust_detail_override = layer.get("trust_detail")
+
+    elif third_party_app_store_question:
+        layer = third_party_app_store_index.answer(bundle, question)
+        active_layer = "Third-Party App Store Index Layer"
+        active_layer_file = "app/brain/layers/third_party_app_store_index.py"
+        out.extend(layer.get("lines", []))
+        next_step = layer.get("next_step", "Verify the app source, ports, volumes, and permissions before installing.")
+        forum_summary = layer.get("forum_summary", "Third-party app-store guidance only. Verify before installing.")
 
     elif app_setup_playbook_question:
         layer = app_setup_playbooks.answer(bundle, question)
@@ -487,6 +495,14 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         out.extend(layer.get("lines", []))
         next_step = "Follow the official ZimaOS manual page first. If the user has an error, collect evidence and route back to diagnostics."
         forum_summary = "This is official ZimaOS manual guidance, not a same-report diagnosis."
+
+    elif app_storage_path_question:
+        layer = app_storage_paths.answer(bundle, question)
+        active_layer = "App Storage-Path Verifier"
+        active_layer_file = "app/brain/layers/app_storage_paths.py"
+        out.extend(layer["lines"])
+        next_step = layer["next_step"]
+        forum_summary = layer["forum_summary"]
 
     elif app_runtime_diag_question:
         layer = app_runtime_diag.answer(bundle, question)
@@ -508,6 +524,14 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         layer = backup_borg.answer(bundle)
         active_layer = "Backup / Borg Layer"
         active_layer_file = "app/brain/layers/backup_borg.py"
+        out.extend(layer["lines"])
+        next_step = layer["next_step"]
+        forum_summary = layer["forum_summary"]
+
+    elif container_command_question:
+        layer = container_commands.answer(bundle)
+        active_layer = "Container Commands Layer"
+        active_layer_file = "app/brain/layers/container_commands.py"
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]

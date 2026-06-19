@@ -1,4 +1,5 @@
 import re
+from brain.layers.app_identity_guard import resolve_app_identity
 
 APP_ALIASES = {
     "immich": ["immich"],
@@ -102,6 +103,10 @@ def _norm(text):
 
 def detect_app(question):
     q = _norm(question)
+
+    guarded_app = resolve_app_identity(question)
+    if guarded_app:
+        return guarded_app
 
     # Integration apps must be checked before Jellyfin because questions often contain both,
     # for example: "setup Jellyseerr with Jellyfin".
@@ -540,7 +545,7 @@ APP_ALIASES.update({
     "tailscale": ["tailscale", "tailscaled"],
     "cloudflared": ["cloudflare", "cloudflared", "cloudflare tunnel", "clouflare", "cloudfare", "cloudflair", "clodflare"],
     "netdata": ["netdata", "netdata cloud"],
-    "portainer": ["portainer", "portainer agent"],
+    "portainer": ["portainer"],
     "homeassistant": ["home assistant", "home-assistant", "homeassistant"],
     "wazuh": ["wazuh"],
     "paperless": ["paperless", "paperless ngx", "paperless-ngx"],
@@ -872,3 +877,49 @@ GUIDES.update({
 })
 
 # --- DATABASE APP VERIFIED GUIDE EXTENSION END ---
+
+
+# --- APP IDENTITY GUARD EXTENSION START ---
+
+APP_ALIASES.update({
+    "portainer-agent": ["portainer agent", "portainer-agent"],
+    "agent-dvr": ["agent dvr", "ispy agent dvr", "ispyagentdvr", "ispy agent"],
+})
+
+GUIDES.update({
+    "portainer-agent": {
+        "title": "Portainer Agent verified install guide",
+        "manual": "Portainer Agent is not the same as Portainer CE. Use it only when this ZimaOS host needs to be managed as a remote Docker environment by another Portainer server.",
+        "order": [
+            "Confirm whether the user wants Portainer CE dashboard or Portainer Agent remote endpoint.",
+            "If Portainer CE is already running locally with Docker socket access, do not install Portainer Agent on the same host unless remote management is required.",
+            "Before installing, verify existing Portainer containers, Docker socket access, exposed ports, and AppData path.",
+            "If installing Portainer Agent, keep the agent private and only expose it to the trusted Portainer server or private network.",
+            "Verify container state, port mapping, Docker socket mount, and logs after install.",
+        ],
+        "common_issues": [
+            "User installs Portainer Agent when they only needed Portainer CE.",
+            "User installs a duplicate Portainer CE dashboard instead of an agent.",
+            "Agent port is exposed publicly.",
+            "Docker socket mount is missing, so the agent cannot manage Docker.",
+        ],
+    },
+    "agent-dvr": {
+        "title": "Agent DVR / iSpy verified identity guide",
+        "manual": "Agent DVR is iSpy Agent DVR. Do not confuse it with generic Docker images containing the word agent, such as Portainer Agent or LinuxServer build-agent.",
+        "order": [
+            "Confirm the requested app is Agent DVR / iSpy Agent DVR.",
+            "Do not match linuxserver/build-agent or portainer-agent.",
+            "Use a trusted Agent DVR / iSpy Docker source only after verifying image name, ports, storage paths, and access control.",
+            "Map persistent data under /DATA/AppData/agent-dvr or the verified ZimaOS-created AppData folder.",
+            "Verify container state, port mapping, bind mounts, and logs after install.",
+        ],
+        "common_issues": [
+            "Generic app search matches portainer-agent.",
+            "Generic app search matches linuxserver/build-agent.",
+            "Camera app data is not mapped to persistent storage.",
+        ],
+    },
+})
+
+# --- APP IDENTITY GUARD EXTENSION END ---

@@ -103,9 +103,30 @@ def search_apps(question, limit=8):
     return [row for score, row in scored[:limit]]
 
 
+def _split_manifest_field(value):
+    return [x.strip() for x in (value or "").split(";") if x.strip()]
+
+
+def _dedupe(items, limit=8):
+    out = []
+    for item in items:
+        if item and item not in out:
+            out.append(item)
+    return out[:limit]
+
+
+def _clean_port_preview(ports):
+    found = []
+    for item in _split_manifest_field(ports):
+        low = item.lower()
+        if re.match(r"^\d+\s*:\s*\d+(?:/(?:tcp|udp))?$", low):
+            found.append(item)
+    return "; ".join(_dedupe(found, 10))
+
+
 def _clean_volume_preview(volumes):
-    parts = []
-    for raw in (volumes or "").split(";"):
+    found = []
+    for raw in _split_manifest_field(volumes):
         item = raw.strip()
         low = item.lower()
 
@@ -113,20 +134,104 @@ def _clean_volume_preview(volumes):
             continue
         if "http://" in low or "https://" in low or "screenshot" in low:
             continue
-        if item.startswith("container:") and "/" not in item and "docker.sock" not in low:
+
+        # Drop port mappings that were flattened into the volume column by the CSV builder.
+        if re.match(r"^\d+\s*:\s*\d+(?:/(?:tcp|udp))?$", low):
             continue
-        if item.startswith("target:") and "/" not in item:
+
+        # Drop CasaOS metadata-only entries. These are not host volume mappings.
+        if item.startswith("container:") or item.startswith("target:"):
             continue
 
-        if "/" in item or "docker.sock" in low or ":" in item:
-            parts.append(item)
+        # Drop environment entries flattened into the volume column, such as KEY=value.
+        if re.match(r"^[A-Z][A-Z0-9_]{1,}=.*$", item):
+            continue
 
-    cleaned = []
-    for item in parts:
-        if item not in cleaned:
-            cleaned.append(item)
+        if "/" in item or "docker.sock" in low:
+            found.append(item)
 
-    return "; ".join(cleaned[:5])
+    return "; ".join(_dedupe(found, 8))
+
+
+def _extract_env_preview(volumes):
+    envs = []
+    for raw in _split_manifest_field(volumes):
+        item = raw.strip()
+
+        if re.match(r"^[A-Z][A-Z0-9_]{1,}=.*$", item):
+            envs.append(item.split("=", 1)[0].strip())
+            continue
+
+        if item.startswith("container:"):
+            name = item.replace("container:", "", 1).strip()
+            if re.match(r"^[A-Z][A-Z0-9_]{1,}$", name):
+                envs.append(name)
+    return "; ".join(_dedupe(envs, 12))
+
+
+def _infer_special_notes(app, image, volumes, risks):
+    blob = " ".join([app or "", image or "", volumes or "", risks or ""]).lower()
+    notes = []
+
+    if "gluetun" in blob:
+        notes.append("VPN gateway container. Apps routed through it must expose their service ports through Gluetun.")
+        notes.append("Requires VPN provider settings before first start.")
+    if "/dev/net/tun" in blob:
+        notes.append("Requires /dev/net/tun device mapping.")
+    if "net_admin" in blob or "net-admin" in blob:
+        notes.append("Requires NET_ADMIN capability.")
+    if "openvpn_user" in blob or "openvpn_password" in blob:
+        notes.append("Requires VPN credentials or a valid VPN config.")
+
+    return _dedupe(notes, 8)
+
+
+def _compact(text):
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _strip_store_prefix(name):
+    n = _normalise(name)
+    prefixes = [
+        "big bear ",
+        "linuxserver ",
+        "linux server ",
+        "lsio ",
+        "casaos ",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for pref in prefixes:
+            if n.startswith(pref):
+                n = n[len(pref):].strip()
+                changed = True
+    return n
+
+
+def _local_name_matches(term, name_norm):
+    if not term or not name_norm:
+        return False
+
+    term_norm = _normalise(term)
+    term_compact = _compact(term_norm)
+    name_compact = _compact(name_norm)
+
+    # Exact and compact exact matches are safe.
+    if term_norm == name_norm or term_compact == name_compact:
+        return True
+
+    # Multi-word app names may appear compacted as container names.
+    # Example: "home assistant" -> "homeassistant".
+    if " " in term_norm and term_compact and term_compact == name_compact:
+        return True
+
+    # Single-word app names must be specific enough.
+    # This allows firefox/gluetun but prevents home -> homepage.
+    if " " not in term_norm and len(term_norm) >= 6:
+        return term_norm in name_norm or term_compact in name_compact
+
+    return False
 
 
 def _find_local_container_evidence(bundle, matches, question=""):
@@ -134,18 +239,26 @@ def _find_local_container_evidence(bundle, matches, question=""):
     docker_ps = evidence.get("docker_ps", "") or ""
     docker_access = evidence.get("docker_access", "") or ""
 
-    # Use the actual app terms from the question first.
-    # This prevents Portainer questions from pulling unrelated containers that only share generic image words.
     terms = []
-    for t in _question_terms(question):
-        nt = _normalise(t)
-        if nt and nt not in terms:
-            terms.append(nt)
 
-    # Fallback to exact app names from top matches only.
+    question_terms = [_normalise(t) for t in _question_terms(question)]
+    phrase_terms = [t for t in question_terms if " " in t]
+
+    # Prefer full phrases when present.
+    for t in phrase_terms:
+        if t and t not in terms:
+            terms.append(t)
+
+    # Add specific single-word terms only when no phrase exists.
     if not terms:
-        for m in matches[:3]:
-            name = _normalise(m.get("app_name", ""))
+        for t in question_terms:
+            if t and len(t) >= 6 and t not in terms:
+                terms.append(t)
+
+    # Add exact-ish app names from top matches, with common store prefixes removed.
+    for m in matches[:3]:
+        for raw_name in [m.get("app_name", ""), _strip_store_prefix(m.get("app_name", ""))]:
+            name = _normalise(raw_name)
             if name and name not in terms:
                 terms.append(name)
 
@@ -157,20 +270,24 @@ def _find_local_container_evidence(bundle, matches, question=""):
             if not clean:
                 continue
 
-            # Compare mainly against the container/app name, not the whole line.
-            # docker_ps format: name|image|status|ports
-            # docker_access format: /name|mounts|ports
             name_part = clean.split("|", 1)[0].strip().lstrip("/")
             name_norm = _normalise(name_part)
 
-            if any(t and (t == name_norm or t in name_norm or name_norm in t) for t in terms):
+            if any(_local_name_matches(t, name_norm) for t in terms):
                 if clean not in found:
                     found.append(clean)
 
     return found[:6]
 
 def answer(bundle, question=""):
-    matches = search_apps(question, limit=5)
+    ql = (question or "").lower()
+    show_all_words = ["show all", "all options", "all variants", "list all", "every option"]
+
+    if any(w in ql for w in show_all_words):
+        matches = search_apps(question, limit=8)
+    else:
+        matches = search_apps(question, limit=3)
+
     lines = []
 
     lines.append("- This is a third-party app-store index question.")
@@ -195,9 +312,13 @@ def answer(bundle, question=""):
         app = m.get("app_name", "")
         store = m.get("store_name", "")
         image = m.get("images", "")
-        ports = m.get("ports", "")
-        vols = _clean_volume_preview(m.get("volumes", ""))
+        ports_raw = m.get("ports", "")
+        volumes_raw = m.get("volumes", "")
+        ports = _clean_port_preview(ports_raw)
+        vols = _clean_volume_preview(volumes_raw)
+        envs = _extract_env_preview(volumes_raw)
         risks = m.get("risk_flags", "")
+        notes = _infer_special_notes(app, image, volumes_raw, risks)
 
         lines.append(f"- {app}")
         lines.append(f"  - Store: {store}")
@@ -206,11 +327,17 @@ def answer(bundle, question=""):
         if ports:
             lines.append(f"  - Ports from manifest: {ports[:180]}")
         if vols:
-            lines.append(f"  - Volumes from manifest: {vols[:180]}")
+            lines.append(f"  - Volumes/devices from manifest: {vols[:220]}")
+        if envs:
+            lines.append(f"  - Required/config env from manifest: {envs[:220]}")
         if risks:
             lines.append(f"  - Risk flags: {risks}")
         else:
             lines.append("  - Risk flags: none parsed from manifest")
+        if notes:
+            lines.append("  - Special notes:")
+            for note in notes:
+                lines.append(f"    - {note}")
 
     lines.append("")
     lines.append("### Local install evidence")
