@@ -1305,12 +1305,12 @@ def index():
         host_rauc = (useful_rauc[0] if useful_rauc else "Available")[:120]
 
     history_html = ""
-    for idx, item in enumerate(reversed(SESSION_HISTORY[-20:]), 1):
+    for idx, item in enumerate(reversed(SESSION_HISTORY[-5:]), 1):
         history_html += f"""
         <details>
           <summary>{idx}. {esc(item['question'][:55])}</summary>
           <div class="small">{esc(item['time'])}</div>
-          <pre>{esc(item['answer'][:1200])}</pre>
+          <pre>{esc(item['answer'][:350])}</pre>
         </details>
         """
 
@@ -1496,6 +1496,14 @@ iframe {{
   <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
   <div class="rule">Analyze first → Verifier second → Explainer third → Repair guide last</div>
 
+  <div class="panel">
+    <h3>Ask ZimaBrain CE</h3>
+    <form method="post" action="/ask">
+      <textarea class="question" name="question" placeholder="Paste or type a new question here..."></textarea>
+      <p><button type="submit">Analyse Report</button></p>
+    </form>
+  </div>
+
   <div class="cards">
     <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">8514</div><div class="small">{esc(bundle['status'])}</div></div>
     <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
@@ -1620,31 +1628,27 @@ iframe {{
 
 
 
-  <div class="grid3">
-    <div class="panel"><h3>Real Alerts</h3><ul>{real_alert_html}</ul></div>
-    <div class="panel"><h3>Container / Service Alerts</h3><ul>{container_alert_html}</ul></div>
-    <div class="panel"><h3>Info Only</h3><ul>{info_alert_html}</ul></div>
-  </div>
+  <details class="panel">
+    <summary>Show dashboard alert panels</summary>
+    <div class="grid3">
+      <div class="panel"><h3>Real Alerts</h3><ul>{real_alert_html}</ul></div>
+      <div class="panel"><h3>Container / Service Alerts</h3><ul>{container_alert_html}</ul></div>
+      <div class="panel"><h3>Info Only</h3><ul>{info_alert_html}</ul></div>
+    </div>
+  </details>
 
-  <div class="panel">
-    <h3>Critical Same-Report Verifier</h3>
+  <details class="panel">
+    <summary>Show Critical Same-Report Verifier</summary>
     <div class="small">This layer runs before question routing and flags high-confidence risks from the same report.</div>
     <ul>{critical_html}</ul>
-  </div>
+  </details>
 
   <div class="panel">
     <h3>Local ZimaOS Visual Dashboard</h3>
-    <p class="small">Live visual if available. Native fallback is used automatically on boards without the dashboard container.</p>
-    {local_zimaos_visual_panel(bundle)}
+    <p class="small">Dashboard preview removed from homepage for faster loading.</p>
+    <p><a class="button" href="http://192.168.64.2:8514" target="_blank">Open Visual Dashboard</a></p>
   </div>
 
-  <div class="panel">
-    <h3>Ask ZimaBrain CE</h3>
-    <form method="post" action="/ask">
-      <textarea class="question" name="question" placeholder="Paste or type a new question here..."></textarea>
-      <p><button type="submit">Analyse Report</button></p>
-    </form>
-  </div>
 </div>
 
 

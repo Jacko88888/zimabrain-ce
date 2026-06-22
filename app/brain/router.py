@@ -482,6 +482,15 @@ def classify(question):
     if hard_app_guide_detected and any(w in ql for w in hard_app_guide_words) and not any(w in ql for w in hard_app_store_words):
         _score(candidates, "media_app_verified_guides_question", 80.0, ["gate:app-verified-guide-hard-install", "entity:app"])
 
+    # Hard priority: explicit official manual/docs questions must use the Manual Knowledge Engine.
+    # This prevents app-store/app-install routing from stealing official ZimaOS/CasaOS documentation questions.
+    if (
+        ("zimaos" in qt or "casaos" in qt)
+        and ("official" in qt or "manual" in qt or "docs" in qt or "documentation" in qt)
+    ):
+        _score(candidates, "manual_knowledge_question", 170.0, ["gate:official-manual-hard-route", "source:zimaos-docs"])
+
+
     # Third-party app-store index questions.
     # This should catch app-store/risk/source questions and "can I install X" before generic setup guidance.
     app_store_words = [
@@ -498,7 +507,18 @@ def classify(question):
 
     if app_store_matches:
         app_store_intent = any(w in ql for w in app_store_words)
-        install_setup_intent = any(w in ql for w in app_install_words) and not any(w in ql for w in os_install_words)
+
+        os_platform_question = (
+            ("zimaos" in qt and {"install", "installation", "installer", "upgrade", "update", "troubleshooting", "guide", "safely"} & qt)
+            or ("casaos" in qt and ("proxmox" in qt or "ubuntu" in qt or "docker ce" in ql or "installer" in qt))
+            or (("move" in qt or "migrate" in qt or "migration" in qt) and "casaos" in qt and "zimaos" in qt)
+        )
+
+        install_setup_intent = (
+            any(w in ql for w in app_install_words)
+            and not any(w in ql for w in os_install_words)
+            and not os_platform_question
+        )
 
         try:
             from brain.layers.media_app_verified_guides import detect_app
@@ -515,6 +535,21 @@ def classify(question):
             _score(candidates, "third_party_app_store_question", 90.0, ["gate:third-party-app-store-index", "source:app-store-index", "intent:app-store-source-risk"])
         elif install_setup_intent and not dedicated_verified_app:
             _score(candidates, "third_party_app_store_question", 90.0, ["gate:third-party-app-store-index", "source:app-store-index", "priority:app-store-match-before-generic-install"])
+
+
+    # Generic unknown/unverified app questions.
+    # Do not create one-off profiles for every odd app.
+    # Route to generic app guidance so the answer can say not verified / not confirmed in app store.
+    unknown_app_help = (
+        ("trying to get" in ql and "work" in ql)
+        or ("does" in qt and "work" in qt and ("app" in qt or "zimaos" in qt))
+        or ("repo" in qt and ("find" in qt or "has" in qt or "app" in qt))
+        or ("not in app store" in ql)
+        or ("is it in the app store" in ql)
+        or ("can i install" in ql and not ("zimaos" in qt and ("install" in qt or "upgrade" in qt)))
+    )
+    if unknown_app_help:
+        _score(candidates, "media_app_verified_guides_question", 82.0, ["gate:generic-unverified-app", "entity:unknown-app"])
 
 
     # Media app verified install/integration guides.
@@ -586,6 +621,23 @@ def classify(question):
         _score(candidates, "app_setup_playbook_question", 34.0, ["gate:known-zima-app-setup", "entity:app"])
 
     # Additional diagnostic layers.
+    # Real forum hard routes from search/referral data.
+    # These are common user phrases that must not fall through to weak fallback or app-store index.
+    if ("casaos.local" in q or "local" in qt and "ip" in qt and ("works" in qt or "address" in qt)):
+        _score(candidates, "network_connectivity_question", 145.0, ["gate:forum-casaos-local-dns", "entity:network-dns-local"])
+
+    if ("failed to load apps" in q or ("load" in qt and "apps" in qt and ("failed" in qt or "refresh" in qt))):
+        _score(candidates, "app_runtime_diag_question", 145.0, ["gate:forum-failed-load-apps", "entity:zimaos-app-runtime"])
+
+    if (("move" in qt or "migrate" in qt or "migration" in qt) and "casaos" in qt and "zimaos" in qt):
+        _score(candidates, "manual_knowledge_question", 145.0, ["gate:forum-casaos-to-zimaos", "source:zimaos-docs"])
+
+    if ("docker ce" in q and "not found" in q and "ubuntu" in qt and "casaos" in qt):
+        _score(candidates, "install_boot_question", 145.0, ["gate:forum-casaos-installer-docker-ce", "entity:installer-dependency"])
+
+    if (("qbittorrent" in qt or "qbit" in qt) and ("radarr" in qt or "sonarr" in qt) and ("download" in qt or "downloads" in qt or "showing" in qt or "not" in qt)):
+        _score(candidates, "app_storage_path_question", 146.0, ["gate:forum-download-stack-paths", "entity:download-stack"])
+
     if {"macbook", "efi", "installer", "install", "boot", "recovery"} & qt and not ("version" in qt):
         _score(candidates, "install_boot_question", 9.2, ["intent:diagnose", "entity:install-boot"])
 

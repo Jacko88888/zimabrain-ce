@@ -220,7 +220,24 @@ def answer(bundle, question=""):
 
     if focused:
         next_step = "Verify the focused app's source path against active findmnt output, then confirm the app uses the matching container path."
-        forum_summary = f"ZimaBrain checked the requested app/stack only: {', '.join(requested_apps)}. Verify the source path against active mount evidence and confirm the container destination path before changing app settings."
+        first_mount = ""
+        for app in sorted(app_hits):
+            if app_hits.get(app):
+                first_mount = app_hits[app][0]
+                break
+
+        if first_mount:
+            forum_summary = (
+                f"ZimaBrain verified Docker mount evidence for {', '.join(requested_apps)}. "
+                f"Verified mount: {first_mount}. "
+                "The container destination path is what the app sees inside Docker, while the source path is the host/ZimaOS storage path. "
+                "Before reinstalling or changing app settings, confirm the source path is on the intended active storage mount."
+            )
+        else:
+            forum_summary = (
+                f"ZimaBrain checked the requested app/stack only: {', '.join(requested_apps)}, but no matching Docker mount evidence was found in this report. "
+                "For a forum user, collect docker ps, docker inspect mount output, the host media path, and the app library/upload path before changing settings."
+            )
     else:
         next_step = "Verify the listed app source paths against active findmnt output before changing app settings, reinstalling apps, or moving data."
         forum_summary = "Known app storage paths should be verified against active mount evidence before changing apps. Pay special attention to Immich, Jellyfin, Nextcloud, qBittorrent, and any paths under /DATA/.media or /var/lib/casaos_data/.media."

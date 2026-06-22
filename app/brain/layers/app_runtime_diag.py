@@ -57,6 +57,25 @@ def answer(bundle, question):
     lines.append("- This is an app runtime diagnostic question.")
     lines.append(f"- Detected symptom: {symptom}")
 
+    q = _norm(question)
+    if "failed to load apps" in q or ("load" in q and "apps" in q and ("failed" in q or "refresh" in q)):
+        lines.append("- Detected scope: ZimaOS Apps UI / App Store loading issue.")
+        lines.append("- This is not a single app container problem yet.")
+        lines.append("- The failure is likely in the Apps page, app-management service, network/DNS access to app sources, or browser/session state.")
+        lines.append("")
+        lines.append("### Checks required")
+        lines.append("- Refresh the browser once and test in a private/incognito window.")
+        lines.append("- Confirm the ZimaOS device has working internet and DNS.")
+        lines.append("- Confirm Docker is running because installed apps depend on Docker state.")
+        lines.append("- Check whether other ZimaOS pages load normally.")
+        lines.append("- Check app-management/app-store related logs before reinstalling anything.")
+        lines.append("- Do not reinstall ZimaOS just because the Apps page fails to load.")
+        return {
+            "lines": lines,
+            "next_step": "Verify browser refresh/private window, internet/DNS, Docker status, and app-management/app-store logs before changing installed apps.",
+            "forum_summary": "This looks like a ZimaOS Apps UI/App Store loading issue, not a single app failure. Verify browser state, DNS/internet, Docker status, and app-management logs before reinstalling or changing apps.",
+        }
+
     if not app:
         lines.append("- No app name was detected from the question.")
         lines.append("- No matching local container/app evidence was found.")

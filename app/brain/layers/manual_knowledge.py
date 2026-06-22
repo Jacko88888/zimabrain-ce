@@ -7,7 +7,8 @@ INDEX_PATH = Path("docs/zimaos-official/manual-index.json")
 GENERIC_WORDS = {
     "how", "what", "where", "when", "why", "can", "could", "would",
     "should", "the", "and", "for", "with", "from", "into", "onto",
-    "zimaos", "zima", "create", "setup", "use", "using", "make",
+    "zimaos", "zima", "official", "manual", "docs", "documentation",
+    "say", "about", "create", "setup", "use", "using", "make",
     "find", "access", "device", "data", "drive", "files"
 }
 
@@ -26,9 +27,15 @@ TOPIC_RULES = [
     },
     {
         "name": "install_usb",
-        "q_any": ["bootable usb", "usb installer", "create usb", "flash usb", "install zimaos", "how to install", "installer"],
-        "want": ["install zimaos", "how to install zimaos", "install"],
+        "q_any": ["bootable usb", "usb installer", "create usb", "flash usb", "install zimaos", "installing zimaos", "how to install", "installer", "installation"],
+        "want": ["how to install zimaos", "install zimaos", "installing zimaos", "install"],
         "block": ["raid", "raid6", "zfs", "ssh", "network id", "time machine", "backup", "smb"],
+    },
+    {
+        "name": "update_safety",
+        "q_any": ["upgrade", "upgrading", "update", "updating", "safely"],
+        "want": ["update offline", "offline install", "update", "upgrade"],
+        "block": ["azuracast", "paperless", "syncthing", "zabbix", "immich", "jellyfin", "time machine"],
     },
     {
         "name": "backup_321",
@@ -38,8 +45,8 @@ TOPIC_RULES = [
     },
     {
         "name": "migration",
-        "q_any": ["migrate", "migration", "move data", "transfer data", "another drive", "rsync"],
-        "want": ["migration", "migrate", "rsync", "backup", "3 2 1", "3-2-1"],
+        "q_any": ["migrate", "migrating", "migration", "move data", "transfer data", "another drive", "rsync", "casaos to zimaos", "from casaos to zimaos"],
+        "want": ["migrate from casaos to zimaos", "casaos to zimaos", "migration", "migrate", "rsync", "backup", "3 2 1", "3-2-1"],
         "block": ["raid6", "zfs", "ssh", "network id", "immich", "jellyfin", "time machine"],
     },
     {
@@ -131,6 +138,16 @@ def _score_page(question, page):
         for t in q_tokens:
             if t in blob:
                 score += 5
+
+    # Strong boosts for explicit official manual page intents.
+    if ("install" in q or "installing" in q or "installation" in q) and "zimaos" in q and "how to install zimaos" in blob:
+        score += 260
+
+    if ("upgrade" in q or "upgrading" in q or "update" in q or "updating" in q) and "zimaos" in q and ("update offline" in blob or "offline install" in blob):
+        score += 220
+
+    if ("casaos" in q and "zimaos" in q and ("migrate" in q or "migrating" in q or "migration" in q)) and ("casaos to zimaos" in blob or "migrate from casaos to zimaos" in blob):
+        score += 300
 
     # Hard guards for known dangerous wrong matches.
     if ("bootable usb" in q or "usb installer" in q or ("usb" in q and "install" in q)) and ("raid" in blob or "raid6" in blob or "zfs" in blob):
@@ -237,6 +254,24 @@ def answer(bundle, question):
         "Answer source: official ZimaOS manual pages saved locally.",
         "This is guidance from documentation, not a same-report diagnosis.",
         f"Manual relevance confidence: {confidence}",
+    ]
+
+    qn = _norm(question)
+    best_blob = _page_blob(best)
+
+    if (
+        ("upgrade" in qn or "upgrading" in qn or "update" in qn or "updating" in qn or "safely" in qn)
+        and "zimaos" in qn
+    ):
+        lines += [
+            "",
+            "ZimaBrain safety note:",
+            "The best official page found is the ZimaOS offline update page. Treat this as the manual reference, not a full update safety diagnosis.",
+            "Before updating, verify current ZimaOS version, backup status, RAUC status, failed services, storage mounts, and enough free space.",
+            "If the system already has storage or app path problems, fix those before updating.",
+        ]
+
+    lines += [
         "",
         "Best matching official page:",
         f"{best.get('title')}",
