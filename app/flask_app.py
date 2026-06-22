@@ -1260,6 +1260,9 @@ def build_installed_apps_port_map_html(bundle):
 def index():
     bundle = dashboard_bundle()
     dashboard_url = f"http://{request.host.split(':')[0]}:8514"
+    live_visual = live_visual_available()
+    dashboard_source_value = "8514" if live_visual else "Native"
+    dashboard_source_note = "Live visual dashboard detected" if live_visual else "Native host evidence from this unit"
     n = bundle["normalized"]
     critical = collect_critical_verifier()
 
@@ -1543,7 +1546,7 @@ iframe {{
   </div>
 
   <div class="cards">
-    <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">8514</div><div class="small">{esc(bundle['status'])}</div></div>
+    <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">{esc(dashboard_source_value)}</div><div class="small">{esc(dashboard_source_note)}</div></div>
     <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
     <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
     <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
@@ -1684,27 +1687,7 @@ iframe {{
 
   <div class="panel">
     <h3>Local ZimaOS Visual Dashboard</h3>
-
-    <details class="visual-dashboard-panel" open>
-      <summary>
-        <span class="visual-dashboard-arrow">▾</span>
-        <span>Show / Hide Visual Dashboard Preview</span>
-      </summary>
-
-      <div class="visual-dashboard-frame-wrap">
-        <iframe
-          title="Local ZimaOS Visual Dashboard"
-          src="{dashboard_url}"
-          loading="lazy"
-          referrerpolicy="no-referrer"
-          style="width:100%;height:720px;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:#0b1020;"
-        ></iframe>
-      </div>
-    </details>
-
-    <p style="margin-top:14px;">
-      <a class="button" href="{dashboard_url}" target="_blank" rel="noopener">Open Visual Dashboard</a>
-    </p>
+    {local_zimaos_visual_panel(bundle)}
   </div>
 
   <script>

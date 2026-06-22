@@ -2,7 +2,7 @@ name: zimabrain-ce
 
 services:
   zimabrain-ce:
-    image: gelbuilding/zimabrain-ce:1.6.1-beta
+    image: gelbuilding/zimabrain-ce:1.6.2-beta
     container_name: zimabrain-ce
     restart: unless-stopped
     privileged: true
