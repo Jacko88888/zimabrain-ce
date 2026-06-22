@@ -1259,6 +1259,7 @@ def build_installed_apps_port_map_html(bundle):
 @app.route("/")
 def index():
     bundle = dashboard_bundle()
+    dashboard_url = f"http://{request.host.split(':')[0]}:8514"
     n = bundle["normalized"]
     critical = collect_critical_verifier()
 
@@ -1476,6 +1477,43 @@ iframe {{
 }}
 </style>
 
+
+
+<style>
+.visual-dashboard-panel {{
+  margin-top: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: rgba(15,23,42,.75);
+  padding: 14px;
+}}
+
+.visual-dashboard-panel summary {{
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #f8fafc;
+}}
+
+.visual-dashboard-panel summary::-webkit-details-marker {{
+  display: none;
+}}
+
+.visual-dashboard-arrow {{
+  font-size: 18px;
+  min-width: 18px;
+}}
+
+.visual-dashboard-frame-wrap {{
+  margin-top: 14px;
+}}
+</style>
+
+
 </head>
 <body>
 <div class="sidebar">
@@ -1643,11 +1681,43 @@ iframe {{
     <ul>{critical_html}</ul>
   </details>
 
+
   <div class="panel">
     <h3>Local ZimaOS Visual Dashboard</h3>
-    <p class="small">Dashboard preview removed from homepage for faster loading.</p>
-    <p><a class="button" href="http://192.168.64.2:8514" target="_blank">Open Visual Dashboard</a></p>
+
+    <details class="visual-dashboard-panel" open>
+      <summary>
+        <span class="visual-dashboard-arrow">▾</span>
+        <span>Show / Hide Visual Dashboard Preview</span>
+      </summary>
+
+      <div class="visual-dashboard-frame-wrap">
+        <iframe
+          title="Local ZimaOS Visual Dashboard"
+          src="{dashboard_url}"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          style="width:100%;height:720px;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:#0b1020;"
+        ></iframe>
+      </div>
+    </details>
+
+    <p style="margin-top:14px;">
+      <a class="button" href="{dashboard_url}" target="_blank" rel="noopener">Open Visual Dashboard</a>
+    </p>
   </div>
+
+  <script>
+  document.querySelectorAll(".visual-dashboard-panel").forEach(function(panel) {{
+    const arrow = panel.querySelector(".visual-dashboard-arrow");
+    function syncArrow() {{
+      arrow.textContent = panel.open ? "▾" : "▸";
+    }}
+    panel.addEventListener("toggle", syncArrow);
+    syncArrow();
+  }});
+  </script>
+
 
 </div>
 
@@ -1868,6 +1938,43 @@ pre {{
 }}
 </style>
 
+
+
+<style>
+.visual-dashboard-panel {{
+  margin-top: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: rgba(15,23,42,.75);
+  padding: 14px;
+}}
+
+.visual-dashboard-panel summary {{
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #f8fafc;
+}}
+
+.visual-dashboard-panel summary::-webkit-details-marker {{
+  display: none;
+}}
+
+.visual-dashboard-arrow {{
+  font-size: 18px;
+  min-width: 18px;
+}}
+
+.visual-dashboard-frame-wrap {{
+  margin-top: 14px;
+}}
+</style>
+
+
 </head>
 <body>
 <div class="wrap">
@@ -1973,6 +2080,43 @@ def session_full():
   background: rgba(30,64,175,.32);
 }}
 </style>
+
+
+
+<style>
+.visual-dashboard-panel {{
+  margin-top: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: rgba(15,23,42,.75);
+  padding: 14px;
+}}
+
+.visual-dashboard-panel summary {{
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #f8fafc;
+}}
+
+.visual-dashboard-panel summary::-webkit-details-marker {{
+  display: none;
+}}
+
+.visual-dashboard-arrow {{
+  font-size: 18px;
+  min-width: 18px;
+}}
+
+.visual-dashboard-frame-wrap {{
+  margin-top: 14px;
+}}
+</style>
+
 
 </head><body><p><a href="/">Back</a> | <a href="/session-download">Download</a></p><pre>{esc(body)}</pre></body></html>"""
 
