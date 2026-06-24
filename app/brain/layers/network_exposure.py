@@ -284,21 +284,68 @@ def answer(bundle):
     if reachability_rows:
         lines.append(f"- Host LAN IP used for reachability probe: `{reachability_host_ip or 'unknown'}`")
         lines.append("- Localhost open + LAN closed can mean either an intentional localhost-only bind or a firewall/ZFW/VLAN/router/bind issue. The bind field helps separate those cases.")
-        for r in reachability_rows[:30]:
+
+        lan_reachable = []
+        localhost_only = []
+        possible_blocked = []
+        other_reachability = []
+
+        for r in reachability_rows:
             bind_ips = bind_map.get((r.get("name", ""), r.get("port", "")), set())
-            bind = _bind_label(bind_ips)
-            note = ""
-            if r.get("localhost") == "open" and r.get("lan") == "closed":
-                if _is_localhost_only_bind(bind_ips):
+            item = {
+                "row": r,
+                "bind_ips": bind_ips,
+                "bind": _bind_label(bind_ips),
+            }
+
+            if r.get("lan") == "open":
+                lan_reachable.append(item)
+            elif r.get("localhost") == "open" and r.get("lan") == "closed" and _is_localhost_only_bind(bind_ips):
+                localhost_only.append(item)
+            elif r.get("localhost") == "open" and r.get("lan") == "closed":
+                possible_blocked.append(item)
+            else:
+                other_reachability.append(item)
+
+        lines.append("")
+        lines.append("#### Reachability summary")
+        lines.append(f"- LAN reachable: {len(lan_reachable)}")
+        lines.append(f"- Intentional localhost-only: {len(localhost_only)}")
+        lines.append(f"- Possible firewall / ZFW / VLAN / bind block: {len(possible_blocked)}")
+        if other_reachability:
+            lines.append(f"- Other / unknown reachability: {len(other_reachability)}")
+
+        def emit_group(title, items, limit=12):
+            lines.append("")
+            lines.append(f"#### {title}")
+            if not items:
+                lines.append("- None detected.")
+                return
+
+            for item in items[:limit]:
+                r = item["row"]
+                note = ""
+                if title.startswith("Intentional"):
                     note = " expected-localhost-only"
-                else:
+                elif title.startswith("Possible"):
                     note = " possible-firewall-or-bind-block"
-            lines.append(f"- {r['name']}:{r['port']} bind={bind} localhost={r['localhost']} lan={r['lan']} lan_ip={r['lan_ip']}{note}")
-        if len(reachability_rows) > 30:
-            lines.append(f"- Additional reachability entries hidden from summary: {len(reachability_rows) - 30}")
+
+                lines.append(
+                    f"- {r['name']}:{r['port']} bind={item['bind']} "
+                    f"localhost={r['localhost']} lan={r['lan']} lan_ip={r['lan_ip']}{note}"
+                )
+
+            if len(items) > limit:
+                lines.append(f"- Additional entries hidden from this group: {len(items) - limit}")
+
+        emit_group("LAN reachable", lan_reachable, limit=18)
+        emit_group("Intentional localhost-only", localhost_only, limit=18)
+        emit_group("Possible firewall / ZFW / VLAN / bind block", possible_blocked, limit=18)
+
+        if other_reachability:
+            emit_group("Other / unknown reachability", other_reachability, limit=18)
     else:
         lines.append("- No live port reachability probe evidence was collected.")
-
 
     lines.append("")
     lines.append("### High-risk exposure checks")
