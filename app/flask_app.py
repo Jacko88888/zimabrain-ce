@@ -152,7 +152,7 @@ def redact_support_text(text):
 
 @app.before_request
 def security_gate():
-    allowed_paths = {"/login", "/setup", "/health", "/api/v1/health"}
+    allowed_paths = {"/login", "/setup", "/health", "/metrics", "/api/v1/health"}
     if request.path.startswith("/assets/") or request.path in allowed_paths:
         return None
 
@@ -3140,6 +3140,39 @@ def load_dashboard():
         DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
         return jsonify({"ok": False, "status": DASHBOARD_STATUS}), 500
 
+
+
+@app.route("/metrics")
+def metrics():
+    bundle = dashboard_bundle()
+    trend = bundle.get("trend_snapshot") or {}
+
+    metrics_map = {
+        "zimabrain_running_containers": trend.get("running_containers", 0),
+        "zimabrain_published_ports": trend.get("published_ports", 0),
+        "zimabrain_lan_reachable_ports": trend.get("lan_reachable_ports", 0),
+        "zimabrain_localhost_only_ports": trend.get("localhost_only_ports", 0),
+        "zimabrain_possible_blocked_ports": trend.get("possible_blocked_ports", 0),
+        "zimabrain_smart_warning_markers": trend.get("smart_warning_markers", 0),
+        "zimabrain_nvme_warning_markers": trend.get("nvme_warning_markers", 0),
+        "zimabrain_dashboard_alerts": len(bundle.get("alerts", []) or []),
+        "zimabrain_exited_containers": len(bundle.get("exited", []) or []),
+        "zimabrain_critical_findings": len(bundle.get("critical_findings", []) or []),
+    }
+
+    lines = []
+    lines.append("# HELP zimabrain_info ZimaBrain CE build information")
+    lines.append("# TYPE zimabrain_info gauge")
+    lines.append(f'zimabrain_info{{app_version="{APP_VERSION}"}} 1')
+
+    for name, value in metrics_map.items():
+        safe_value = int(value or 0)
+        lines.append(f"# HELP {name} ZimaBrain CE metric")
+        lines.append(f"# TYPE {name} gauge")
+        lines.append(f"{name} {safe_value}")
+
+    lines.append("")
+    return Response("\n".join(lines), mimetype="text/plain; version=0.0.4; charset=utf-8")
 
 @app.route("/health")
 def health():
