@@ -150,7 +150,7 @@ def redact_support_text(text):
 
 @app.before_request
 def security_gate():
-    allowed_paths = {"/login", "/setup", "/health"}
+    allowed_paths = {"/login", "/setup", "/health", "/api/v1/health"}
     if request.path.startswith("/assets/") or request.path in allowed_paths:
         return None
 
@@ -2530,6 +2530,139 @@ def answer_download():
         mimetype="text/markdown",
         headers={"Content-Disposition": f"attachment; filename=zimabrain-answer-{stamp}.md"},
     )
+
+
+
+
+def _answer_metadata(answer):
+    text = str(answer or "")
+    status = "UNKNOWN"
+    layer = ""
+    layer_file = ""
+
+    m = re.search(r"@@VERIFY:([^@]+)@@", text)
+    if m:
+        status = m.group(1).strip()
+
+    m = re.search(r"Active layer:\s*`?([^`\n]+)`?", text)
+    if m:
+        layer = m.group(1).strip()
+
+    m = re.search(r"Layer file:\s*`?([^`\n]+)`?", text)
+    if m:
+        layer_file = m.group(1).strip()
+
+    warnings = []
+    critical = []
+
+    section = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        low = line.lower()
+
+        if low.startswith("#### critical") or low.startswith("### critical"):
+            section = "critical"
+            continue
+        if low.startswith("#### warnings") or low.startswith("### warnings"):
+            section = "warnings"
+            continue
+        if line.startswith("#### ") or line.startswith("### "):
+            section = ""
+
+        if line.startswith("- "):
+            item = line[2:].strip()
+            if section == "critical" and item and item.lower() != "none parsed.":
+                critical.append(item)
+            if section == "warnings" and item and item.lower() != "none parsed.":
+                warnings.append(item)
+
+    return {
+        "verification_status": status,
+        "active_layer": layer,
+        "layer_file": layer_file,
+        "critical_findings": critical[:50],
+        "warnings": warnings[:50],
+    }
+
+
+@app.route("/api/v1/health")
+def api_v1_health():
+    return jsonify({
+        "ok": True,
+        "app": APP_VERSION,
+        "api": "v1",
+        "security": {
+            "password_configured": password_configured(),
+            "authenticated": is_logged_in(),
+        },
+        "history": len(SESSION_HISTORY),
+        "dashboard_loaded": bool(DASHBOARD_REPORT.strip()),
+    })
+
+
+@app.route("/api/v1/summary")
+def api_v1_summary():
+    latest = SESSION_HISTORY[-1] if SESSION_HISTORY else None
+    return jsonify({
+        "ok": True,
+        "app": APP_VERSION,
+        "api": "v1",
+        "security": {
+            "password_configured": password_configured(),
+            "authenticated": is_logged_in(),
+        },
+        "dashboard": {
+            "loaded": bool(DASHBOARD_REPORT.strip()),
+            "status": DASHBOARD_STATUS,
+            "characters": len(DASHBOARD_REPORT or ""),
+        },
+        "history": {
+            "count": len(SESSION_HISTORY),
+            "latest_question": latest.get("question") if latest else None,
+            "latest_time": latest.get("time") if latest else None,
+            "latest_metadata": _answer_metadata(latest.get("answer", "")) if latest else None,
+        },
+        "endpoints": [
+            "GET /api/v1/health",
+            "GET /api/v1/summary",
+            "POST /api/v1/ask",
+        ],
+    })
+
+
+@app.route("/api/v1/ask", methods=["POST"])
+def api_v1_ask():
+    payload = request.get_json(silent=True) or {}
+    question = str(payload.get("question") or request.form.get("question", "")).strip()
+
+    if not question:
+        return jsonify({"ok": False, "error": "question is required"}), 400
+
+    global DASHBOARD_REPORT, DASHBOARD_STATUS
+
+    if not DASHBOARD_REPORT.strip():
+        try:
+            DASHBOARD_REPORT = fetch_dashboard_report()
+            DASHBOARD_STATUS = f"Dashboard evidence loaded: {len(DASHBOARD_REPORT):,} characters."
+        except Exception as e:
+            DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
+
+    answer = answer_question(question)
+
+    SESSION_HISTORY.append({
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "question": question,
+        "answer": answer,
+    })
+
+    metadata = _answer_metadata(answer)
+
+    return jsonify({
+        "ok": True,
+        "question": question,
+        "answer_markdown": answer,
+        **metadata,
+    })
 
 
 @app.route("/load-dashboard")
