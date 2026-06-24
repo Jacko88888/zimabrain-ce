@@ -20,12 +20,18 @@
 - Docker healthcheck for dev and community app compose.
 - ZimaBrain CE self-audit warning for elevated host access.
 - Safer third-party app index matching for reverse proxy / Nginx queries.
+- SQLite trend snapshot persistence in `/data/zimabrain_trends.sqlite`.
+- Trend History Layer for local snapshot history and previous-scan comparison.
+- Trend Alert Layer for proactive drift detection between the latest two snapshots.
+- Structured JSON blocks for trend history and trend alert output.
 
 ### Improved
 - Reduced false positives in reverse proxy app-store searches.
 - Improved firewall diagnostics by separating localhost-only binds from possible firewall blocks.
 - Improved network exposure summaries for published ports, tunnel/proxy containers, and Docker DOCKER-USER evidence.
 - Improved SMART answers to avoid calling a disk fully healthy when SMART visibility is incomplete.
+- Improved JSON exports so trend history and alert sections export as structured list blocks.
+- Improved diagnostic drift visibility by comparing published ports, LAN reachable ports, possible blocked ports, container count, and SMART/NVMe markers.
 
 ### Security
 - Password protection is enabled by first-run setup.
@@ -36,4 +42,5 @@
 ### Known limitations
 - ZimaBrain CE still requires elevated host visibility for local diagnostics.
 - Least-privilege hardened compose is not yet the default.
-- MCP, persistence/trends, proactive alerts, CI, and multi-arch release workflow are future items.
+- MCP, outbound notifications, CI, and multi-arch release workflow are future items.
+- Persistence/trends and proactive alert logic now exist, but external alert delivery such as ntfy/email/webhook is not implemented yet.
