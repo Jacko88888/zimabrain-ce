@@ -100,7 +100,7 @@ def answer(question, bundle):
     out.append(f"- Latest snapshot: `{latest['created_at']}`")
     out.append("")
 
-    out.append("### Latest trend snapshot")
+    out.append("#### Latest trend snapshot")
     out.append(f"- App version: `{latest['app_version']}`")
     out.append(f"- Running containers: {latest['running_containers']}")
     out.append(f"- Published ports: {latest['published_ports']}")
@@ -111,7 +111,7 @@ def answer(question, bundle):
     out.append(f"- NVMe warning markers: {latest['nvme_warning_markers']}")
     out.append("")
 
-    out.append("### Change since previous scan")
+    out.append("#### Change since previous scan")
     if previous:
         out.append(f"- Previous snapshot: `{previous['created_at']}`")
         for label, key in [
@@ -128,7 +128,7 @@ def answer(question, bundle):
         out.append("- No previous snapshot yet, so there is nothing to compare against.")
     out.append("")
 
-    out.append("### Recent snapshots")
+    out.append("#### Recent snapshots")
     for row in rows:
         out.append(
             f"- #{row['id']} `{row['created_at']}` "

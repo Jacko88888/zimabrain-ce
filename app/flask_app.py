@@ -2719,6 +2719,9 @@ def _answer_blocks(answer):
         ("warnings", "Warnings", "list"),
         ("info_items", "Info / Unavailable Evidence", "list"),
         ("healthy_evidence", "Healthy / Normal Evidence", "list"),
+        ("latest_trend_snapshot", "Latest Trend Snapshot", "list"),
+        ("change_since_previous_scan", "Change Since Previous Scan", "list"),
+        ("recent_snapshots", "Recent Snapshots", "list"),
         ("next_safest_step", "Next Safest Step", "text"),
         ("safe_recommendation", "Safe Recommendation", "text"),
         ("forum_ready_summary", "Forum Ready Summary", "text"),
@@ -2731,6 +2734,10 @@ def _answer_blocks(answer):
         if kind == "list":
             if not value:
                 continue
+
+            if isinstance(value, str):
+                value = [line.strip() for line in value.splitlines() if line.strip()]
+
             blocks.append({
                 "key": key,
                 "title": title,
@@ -2955,6 +2962,9 @@ def _answer_sections(answer):
         "critical findings": "critical_findings",
         "warnings / context": "warnings",
         "healthy / normal parsed evidence": "healthy_evidence",
+        "latest trend snapshot": "latest_trend_snapshot",
+        "change since previous scan": "change_since_previous_scan",
+        "recent snapshots": "recent_snapshots",
         "next safest step": "next_safest_step",
         "safe recommendation": "safe_recommendation",
         "forum-ready summary": "forum_ready_summary",
@@ -2975,6 +2985,9 @@ def _answer_sections(answer):
         "warnings": [],
         "info_items": [],
         "healthy_evidence": [],
+        "latest_trend_snapshot": [],
+        "change_since_previous_scan": [],
+        "recent_snapshots": [],
         "next_safest_step": [],
         "safe_recommendation": [],
         "forum_ready_summary": [],
