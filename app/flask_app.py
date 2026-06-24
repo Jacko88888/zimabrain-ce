@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import re
 from datetime import datetime
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from brain import render as brain_render
 from brain import answer_builder
 
@@ -18,6 +18,11 @@ APP_VERSION = "v1.6.0-beta"
 DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
 
 app = Flask(__name__)
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory("assets", filename)
+
 
 SESSION_HISTORY = []
 DASHBOARD_REPORT = ""
@@ -246,6 +251,16 @@ def build_native_report(reason=""):
 
     lines.append("")
     lines.append("===== CONTAINERS =====")
+    running_count = 0
+    total_count = len(containers)
+    for c in containers:
+        state = str(c.get("state", "") or "").lower()
+        if state == "running" or state.startswith("up"):
+            running_count += 1
+
+    lines.append(f"Containers: {running_count}/{total_count} running")
+    lines.append(f"Containers not running: {total_count - running_count}")
+    lines.append("")
     lines.append("Name | State | Image")
     lines.append("--- | --- | ---")
     for c in containers:
@@ -446,7 +461,9 @@ def local_zimaos_visual_panel(bundle):
           grid-template-columns: 1fr;
         }}
       }}
-    </style>
+    
+
+</style>
 
     <div class="native-zima-wrap">
       <div class="native-zima-top">
@@ -488,13 +505,24 @@ def fetch_dashboard_report():
     try:
         req = urllib.request.Request(
             DASHBOARD_REPORT_URL,
-            headers={"User-Agent": "ZimaBrain-CE-Flask"},
+            headers={"User-Agent": "ZimaBrain-CE-Dashboard-Layer"},
         )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            return response.read().decode("utf-8", errors="replace").strip()
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            report = resp.read().decode("utf-8", errors="replace")
+
+        # External dashboard report may contain container alerts but not
+        # the native running/total Docker container count.
+        # Append native local evidence so answer layers can verify X/Y running.
+        if "Containers:" not in report or "Containers not running:" not in report:
+            report = (
+                report.rstrip()
+                + "\n\n===== NATIVE LOCAL FALLBACK REPORT =====\n"
+                + build_native_report("Native local Docker/container summary appended for verification.")
+            )
+
+        return report
     except Exception as exc:
         return build_native_report(f"Live dashboard unavailable: {exc}")
-
 
 def parse_dashboard_alerts(report_text):
     alerts = []
@@ -593,6 +621,44 @@ def severity_dot(text):
     return text
 
 
+
+
+def parse_dashboard_container_count(report_text):
+    """
+    Parse visual dashboard container count such as:
+    - Containers 44/50
+    - CONTAINERS 3/4
+    - containers: 4/4 running
+    This is dashboard summary evidence, separate from named exited-container rows.
+    """
+    text = str(report_text or "")
+    patterns = [
+        r"\bcontainers?\b\s*[:\-]?\s*(\d+)\s*/\s*(\d+)",
+        r"\bCONTAINERS?\b\s*[:\-]?\s*(\d+)\s*/\s*(\d+)",
+    ]
+
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if not m:
+            continue
+        running = int(m.group(1))
+        total = int(m.group(2))
+        if total > 0 and 0 <= running <= total:
+            return {
+                "running": running,
+                "total": total,
+                "not_running": total - running,
+                "source": "visual_dashboard_container_count",
+            }
+
+    return {
+        "running": None,
+        "total": None,
+        "not_running": None,
+        "source": "not_parsed",
+    }
+
+
 def normalize_dashboard_evidence(alerts, disks, exited):
     real_alerts = []
     info_alerts = []
@@ -670,6 +736,10 @@ def collect_same_report_evidence():
             timeout=20,
         ),
         "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
+        "zfw_status": run_host_command("systemctl is-active zfw-ui.service 2>/dev/null || true"),
+        "zfw_files": run_host_command("ls -l /var/lib/extensions/zfw.raw /DATA/zfw/zfw /DATA/zfw/rules.json 2>/dev/null || true"),
+        "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
+        "self_docker_security": run_host_command("docker inspect zimabrain-ce-flask-8601 --format 'User={{.Config.User}} Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}} SecurityOpt={{.HostConfig.SecurityOpt}} CapAdd={{.HostConfig.CapAdd}}' 2>/dev/null || true; docker inspect zimabrain-ce-flask-8601 --format '{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' 2>/dev/null || true"),
         "host_os": run_host_command("cat /etc/os-release 2>/dev/null || true"),
         "kernel": run_host_command("uname -r 2>/dev/null || true"),
         "uptime": run_host_command("uptime -p 2>/dev/null || true"),
@@ -839,6 +909,7 @@ def dashboard_bundle():
     alerts = parse_dashboard_alerts(DASHBOARD_REPORT)
     disks = parse_dashboard_disks(DASHBOARD_REPORT)
     exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
+    container_count = parse_dashboard_container_count(DASHBOARD_REPORT)
     normalized = normalize_dashboard_evidence(alerts, disks, exited)
     same_report_evidence = collect_same_report_evidence()
     critical_findings = evaluate_critical_same_report(same_report_evidence)
@@ -849,6 +920,7 @@ def dashboard_bundle():
         "alerts": alerts,
         "disks": disks,
         "exited": exited,
+        "container_count": container_count,
         "normalized": normalized,
         "same_report_evidence": same_report_evidence,
         "critical_findings": critical_findings,
@@ -1292,6 +1364,8 @@ def index():
     host_kernel = host_ev.get("kernel", "").strip() or "Unknown"
     host_uptime = host_ev.get("uptime", "").strip() or "Unknown"
     host_date = host_ev.get("host_date", "").strip() or "Unknown"
+    self_health_raw = run_host_command("docker inspect zimabrain-ce-flask-8601 --format '{{json .State.Health.Status}}' 2>/dev/null || true").strip().strip('"')
+    self_health = self_health_raw if self_health_raw and self_health_raw != "<no value>" else "Unknown"
     host_rauc_raw = host_ev.get("rauc", "").strip()
     host_rauc = "Unavailable"
     if host_rauc_raw and "not found" not in host_rauc_raw.lower():
@@ -1406,6 +1480,8 @@ iframe {{
 
 
 {{brain_render.COPY_CODE_CSS}}
+
+
 </style>
 
 <style>
@@ -1478,6 +1554,8 @@ iframe {{
     grid-template-columns: 1fr;
   }}
 }}
+
+
 </style>
 
 
@@ -1514,6 +1592,8 @@ iframe {{
 .visual-dashboard-frame-wrap {{
   margin-top: 14px;
 }}
+
+
 </style>
 
 
@@ -1531,7 +1611,7 @@ iframe {{
 </div>
 
 <div class="main">
-  <h1>{APP_NAME}</h1>
+  <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.svg" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
   <div class="subtitle">{APP_SUBTITLE}</div>
   <div class="subtitle">{APP_DESCRIPTOR}</div>
   <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
@@ -1563,6 +1643,7 @@ iframe {{
       <span class="chip">Uptime: {esc(host_uptime)}</span>
       <span class="chip">RAUC: {esc(host_rauc)}</span>
       <span class="chip">Evidence refreshed: {esc(host_date)}</span>
+      <span class="chip">Docker Health: {esc(self_health)}</span>
       <span class="chip">Render module: active</span>
       <span class="chip">Router module: active</span>
       <span class="chip">Answer builder: active</span>
@@ -1869,6 +1950,8 @@ pre {{
 .answer-dashboard-panel summary {{
   cursor:pointer; font-weight:800; color:#dbeafe;
 }}
+
+
 </style>
 
 <style>
@@ -1919,6 +2002,8 @@ pre {{
   border-color: rgba(96,165,250,.45);
   background: rgba(30,64,175,.32);
 }}
+
+
 </style>
 
 
@@ -1955,6 +2040,8 @@ pre {{
 .visual-dashboard-frame-wrap {{
   margin-top: 14px;
 }}
+
+
 </style>
 
 
@@ -1962,7 +2049,7 @@ pre {{
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>{APP_NAME}</h1>
+    <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.svg" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
     <div class="subtitle">{APP_SUBTITLE}</div>
     <div class="subtitle">{APP_DESCRIPTOR}</div>
     <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
@@ -2012,7 +2099,9 @@ def clear_session():
 def session_full():
     body = build_session_export()
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>Brain Session</title>
-<style>body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;padding:24px;}}pre{{white-space:pre-wrap;background:#050814;border:1px solid #263241;border-radius:14px;padding:18px;}}</style>
+<style>body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;padding:24px;}}pre{{white-space:pre-wrap;background:#050814;border:1px solid #263241;border-radius:14px;padding:18px;}}
+
+</style>
 
 <style>
 .layer-columns {{
@@ -2062,6 +2151,8 @@ def session_full():
   border-color: rgba(96,165,250,.45);
   background: rgba(30,64,175,.32);
 }}
+
+
 </style>
 
 
@@ -2098,6 +2189,8 @@ def session_full():
 .visual-dashboard-frame-wrap {{
   margin-top: 14px;
 }}
+
+
 </style>
 
 

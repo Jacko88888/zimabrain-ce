@@ -1,5 +1,9 @@
 def answer(bundle, severity_dot):
     n = bundle["normalized"]
+    count = bundle.get("container_count", {}) or {}
+    running = count.get("running")
+    total = count.get("total")
+    not_running = count.get("not_running")
 
     lines = []
     lines.append("- This is a dashboard alert question.")
@@ -15,11 +19,19 @@ def answer(bundle, severity_dot):
 
     lines.append("")
     lines.append("Container/service alerts:")
+    if running is not None and total is not None:
+        lines.append(f"- Dashboard container count: {running}/{total} running.")
+        if not_running and not_running > 0:
+            lines.append(f"- {not_running} container(s) are not running according to the visual dashboard count.")
+
     if n.get("container_alerts"):
         for alert in n["container_alerts"]:
             lines.append(f"- {severity_dot(alert)}")
     else:
-        lines.append("- No exited container/service alerts were parsed.")
+        if not_running and not_running > 0:
+            lines.append("- No named exited container/service alert was parsed, but the dashboard count still shows a container mismatch.")
+        else:
+            lines.append("- No exited container/service alerts were parsed.")
 
     lines.append("")
     lines.append("Info only / unsupported metrics:")
@@ -31,6 +43,6 @@ def answer(bundle, severity_dot):
 
     return {
         "lines": lines,
-        "next_step": "Inspect the failed zima-cron-fix.service first, then check whether sda CRC errors are increasing, verify the active sdd mount before deleting anything, and finally review the exited containers one by one.",
-        "forum_summary": "Based on the verified report, the priority order is: failed zima-cron-fix.service, sda CRC errors, sdd filesystem usage at 100%, then exited containers. Handle each item by verifying the exact service, disk, mount, or container before making changes.",
+        "next_step": "If the container count is not full, inspect Docker status for the missing stopped/exited container first. Then check any hardware, storage, or service alerts one by one.",
+        "forum_summary": "Based on the verified report, compare the dashboard container count with named container alerts. If the count is not full but no name is parsed, verify Docker status before changing or removing anything.",
     }

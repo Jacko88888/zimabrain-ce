@@ -112,6 +112,44 @@ def severity_dot(text):
     return text
 
 
+
+
+def parse_dashboard_container_count(report_text):
+    """
+    Parse visual dashboard container count such as:
+    - Containers 44/50
+    - CONTAINERS 3/4
+    - containers: 4/4 running
+    This is dashboard summary evidence, separate from named exited-container rows.
+    """
+    text = str(report_text or "")
+    patterns = [
+        r"\bcontainers?\b\s*[:\-]?\s*(\d+)\s*/\s*(\d+)",
+        r"\bCONTAINERS?\b\s*[:\-]?\s*(\d+)\s*/\s*(\d+)",
+    ]
+
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if not m:
+            continue
+        running = int(m.group(1))
+        total = int(m.group(2))
+        if total > 0 and 0 <= running <= total:
+            return {
+                "running": running,
+                "total": total,
+                "not_running": total - running,
+                "source": "visual_dashboard_container_count",
+            }
+
+    return {
+        "running": None,
+        "total": None,
+        "not_running": None,
+        "source": "not_parsed",
+    }
+
+
 def normalize_dashboard_evidence(alerts, disks, exited):
     real_alerts = []
     info_alerts = []
@@ -187,6 +225,9 @@ def collect_same_report_evidence():
             timeout=20,
         ),
         "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
+        "zfw_status": run_host_command("systemctl is-active zfw-ui.service 2>/dev/null || true"),
+        "zfw_files": run_host_command("ls -l /var/lib/extensions/zfw.raw /DATA/zfw/zfw /DATA/zfw/rules.json 2>/dev/null || true"),
+        "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
     }
 
 
@@ -342,6 +383,7 @@ def dashboard_bundle():
     alerts = parse_dashboard_alerts(DASHBOARD_REPORT)
     disks = parse_dashboard_disks(DASHBOARD_REPORT)
     exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
+    container_count = parse_dashboard_container_count(DASHBOARD_REPORT)
     normalized = normalize_dashboard_evidence(alerts, disks, exited)
     same_report_evidence = collect_same_report_evidence()
     critical_findings = evaluate_critical_same_report(same_report_evidence)
@@ -352,6 +394,7 @@ def dashboard_bundle():
         "alerts": alerts,
         "disks": disks,
         "exited": exited,
+        "container_count": container_count,
         "normalized": normalized,
         "same_report_evidence": same_report_evidence,
         "critical_findings": critical_findings,
