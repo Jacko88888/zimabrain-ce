@@ -1,6 +1,7 @@
 import html
 import urllib.request
 import json
+import sqlite3
 import socket
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ APP_SUBTITLE = "Local Zima Knowledge Assistant"
 APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
 APP_VERSION = "v1.6.0-beta"
 DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
+TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 
 app = Flask(__name__)
 
@@ -1182,6 +1184,189 @@ def critical_badge(level):
     return "ℹ️ INFO"
 
 
+def _count_published_ports_from_evidence(evidence):
+    text = evidence.get("port_reachability", "") or ""
+    count = 0
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("HOST_LAN_IP="):
+            continue
+        parts = line.split("|")
+        if len(parts) >= 5:
+            count += 1
+    return count
+
+
+def _count_reachability_groups(evidence):
+    text = evidence.get("port_reachability", "") or ""
+    lan_reachable = 0
+    localhost_only = 0
+    possible_blocked = 0
+
+    bind_map = {}
+    docker_access = evidence.get("docker_access", "") or ""
+
+    for raw in docker_access.splitlines():
+        parts = raw.strip().split("|", 2)
+        if len(parts) != 3:
+            continue
+        name = parts[0].lstrip("/")
+        port_blob = parts[2]
+        for item in port_blob.split(";"):
+            if "=>" not in item:
+                continue
+            right = item.split("=>", 1)[1]
+            for hp in right.split(","):
+                hp = hp.strip()
+                if not hp or ":" not in hp:
+                    continue
+                host_ip, host_port = hp.rsplit(":", 1)
+                host_ip = host_ip.strip("[]") or "unknown"
+                host_port = host_port.strip()
+                if host_port.isdigit():
+                    bind_map.setdefault((name, host_port), set()).add(host_ip)
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("HOST_LAN_IP="):
+            continue
+
+        parts = line.split("|")
+        if len(parts) < 5:
+            continue
+
+        name = parts[0].strip()
+        port = parts[1].strip()
+        localhost = ""
+        lan = ""
+
+        for part in parts[2:]:
+            if part.startswith("localhost="):
+                localhost = part.split("=", 1)[1].strip()
+            elif part.startswith("lan="):
+                lan = part.split("=", 1)[1].strip()
+
+        bind_ips = bind_map.get((name, port), set())
+        localhost_bind = bool(bind_ips) and all(ip in {"127.0.0.1", "::1", "localhost"} for ip in bind_ips)
+
+        if lan == "open":
+            lan_reachable += 1
+        elif localhost == "open" and lan == "closed" and localhost_bind:
+            localhost_only += 1
+        elif localhost == "open" and lan == "closed":
+            possible_blocked += 1
+
+    return lan_reachable, localhost_only, possible_blocked
+
+
+def _count_smart_warnings(evidence):
+    smart = (evidence.get("smart", "") or "").lower()
+    nvme = (evidence.get("nvme_smart", "") or "").lower()
+
+    smart_warnings = 0
+    nvme_warnings = 0
+
+    for marker in [
+        "reallocated_sector_ct",
+        "current_pending_sector",
+        "offline_uncorrectable",
+        "udma_crc_error_count",
+        "smart overall-health self-assessment test result: failed",
+        "smart support is: unavailable",
+        "unknown usb bridge",
+        "please specify device type",
+    ]:
+        if marker in smart:
+            smart_warnings += 1
+
+    for marker in [
+        "critical_warning",
+        "media_errors",
+        "num_err_log_entries",
+        "unsafe_shutdowns",
+    ]:
+        if marker in nvme:
+            nvme_warnings += 1
+
+    return smart_warnings, nvme_warnings
+
+
+def _count_running_containers(evidence):
+    docker_ps = evidence.get("docker_ps", "") or ""
+    count = 0
+    for line in docker_ps.splitlines():
+        if "|" in line:
+            count += 1
+    return count
+
+
+def record_trend_snapshot(bundle):
+    try:
+        evidence = bundle.get("same_report_evidence", {}) if isinstance(bundle, dict) else {}
+
+        published_ports = _count_published_ports_from_evidence(evidence)
+        lan_reachable, localhost_only, possible_blocked = _count_reachability_groups(evidence)
+        smart_warnings, nvme_warnings = _count_smart_warnings(evidence)
+        running_containers = _count_running_containers(evidence)
+
+        with sqlite3.connect(TREND_DB_PATH, timeout=5) as con:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS trend_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    app_version TEXT NOT NULL,
+                    running_containers INTEGER NOT NULL,
+                    published_ports INTEGER NOT NULL,
+                    lan_reachable_ports INTEGER NOT NULL,
+                    localhost_only_ports INTEGER NOT NULL,
+                    possible_blocked_ports INTEGER NOT NULL,
+                    smart_warning_markers INTEGER NOT NULL,
+                    nvme_warning_markers INTEGER NOT NULL
+                )
+            """)
+            con.execute("""
+                INSERT INTO trend_snapshots (
+                    created_at,
+                    app_version,
+                    running_containers,
+                    published_ports,
+                    lan_reachable_ports,
+                    localhost_only_ports,
+                    possible_blocked_ports,
+                    smart_warning_markers,
+                    nvme_warning_markers
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                APP_VERSION,
+                running_containers,
+                published_ports,
+                lan_reachable,
+                localhost_only,
+                possible_blocked,
+                smart_warnings,
+                nvme_warnings,
+            ))
+            con.commit()
+
+        return {
+            "ok": True,
+            "running_containers": running_containers,
+            "published_ports": published_ports,
+            "lan_reachable_ports": lan_reachable,
+            "localhost_only_ports": localhost_only,
+            "possible_blocked_ports": possible_blocked,
+            "smart_warning_markers": smart_warnings,
+            "nvme_warning_markers": nvme_warnings,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+        }
+
+
+
 def dashboard_bundle():
     global DASHBOARD_REPORT, DASHBOARD_STATUS
 
@@ -1200,7 +1385,7 @@ def dashboard_bundle():
     same_report_evidence = collect_same_report_evidence()
     critical_findings = evaluate_critical_same_report(same_report_evidence)
 
-    return {
+    bundle = {
         "report": DASHBOARD_REPORT,
         "status": DASHBOARD_STATUS,
         "alerts": alerts,
@@ -1211,6 +1396,10 @@ def dashboard_bundle():
         "same_report_evidence": same_report_evidence,
         "critical_findings": critical_findings,
     }
+
+    bundle["trend_snapshot"] = record_trend_snapshot(bundle)
+
+    return bundle
 
 
 
