@@ -37,6 +37,7 @@ from brain.layers import install_boot_diag
 from brain.layers import manual_knowledge
 from brain.layers import third_party_app_store_index
 from brain.layers import media_app_verified_guides
+from brain.layers.hardware_compatibility_layer import answer_hardware_compatibility
 
 
 def _verification_status(active_layer, layer_lines, report_text):
@@ -155,6 +156,10 @@ def _verification_block(status, active_layer, active_layer_file):
 
 def answer_question(question, bundle, build_verifier_summary, critical_badge, severity_dot):
     q = (question or "").strip().lower()
+    hardware_result = answer_hardware_compatibility(question)
+    if hardware_result.matched:
+        return hardware_result.answer
+
     route = router.classify(question)
     n = bundle["normalized"]
 
