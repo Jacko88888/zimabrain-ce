@@ -20,6 +20,7 @@ from brain.layers import app_setup_playbooks
 from brain.layers import backup_borg
 from brain.layers import smart_trend
 from brain.layers import network_exposure
+from brain.layers import trend_history
 from brain.layers import zimaos_regression
 from brain.layers import gpu_ai_runtime
 from brain.layers import report_comparison
@@ -157,6 +158,10 @@ def _verification_block(status, active_layer, active_layer_file):
 
 def answer_question(question, bundle, build_verifier_summary, critical_badge, severity_dot):
     q = (question or "").strip().lower()
+
+    if trend_history.is_trend_question(question):
+        return trend_history.answer(question, bundle)
+
     smart_result = answer_smart_health(question, bundle)
     if smart_result.matched:
         return smart_result.answer
