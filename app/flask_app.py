@@ -736,6 +736,8 @@ def collect_same_report_evidence():
             timeout=20,
         ),
         "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
+        "smart": run_host_command("for d in /dev/sd?; do echo \"===== SMART $d =====\"; smartctl -H -A \"$d\" 2>&1 | sed -n '1,140p'; done 2>/dev/null || true", timeout=30),
+        "nvme_smart": run_host_command("for n in /dev/nvme?n1; do echo \"===== NVME $n =====\"; nvme smart-log \"$n\" 2>&1 | sed -n '1,90p'; done 2>/dev/null || true", timeout=30),
         "zfw_status": run_host_command("systemctl is-active zfw-ui.service 2>/dev/null || true"),
         "zfw_files": run_host_command("ls -l /var/lib/extensions/zfw.raw /DATA/zfw/zfw /DATA/zfw/rules.json 2>/dev/null || true"),
         "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
