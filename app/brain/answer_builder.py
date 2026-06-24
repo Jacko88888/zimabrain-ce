@@ -22,6 +22,7 @@ from brain.layers import smart_trend
 from brain.layers import network_exposure
 from brain.layers import trend_history
 from brain.layers import trend_alerts
+from brain.layers import host_hardware_metrics
 from brain.layers import zimaos_regression
 from brain.layers import gpu_ai_runtime
 from brain.layers import report_comparison
@@ -165,6 +166,9 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
 
     if trend_history.is_trend_question(question):
         return trend_history.answer(question, bundle)
+
+    if host_hardware_metrics.is_host_hardware_question(question):
+        return host_hardware_metrics.answer(question, bundle)
 
     smart_result = answer_smart_health(question, bundle)
     if smart_result.matched:
