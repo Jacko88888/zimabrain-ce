@@ -2336,7 +2336,9 @@ pre {{
     <a class="button" href="/">Back to ZimaBrain</a>
     <a class="button" href="/answer-download">Download Current Answer MD</a>
     <a class="button" href="/answer-download-html">Download Current Answer HTML</a>
+    <a class="button" href="/answer-download-json">Download Current Answer JSON</a>
     <a class="button" href="/session-download-html">Download Brain Session HTML</a>
+    <a class="button" href="/session-download-json">Download Brain Session JSON</a>
     <a class="button" href="/session-full">Open Full Session View</a>
   </div>
 
@@ -2483,6 +2485,58 @@ def session_download_redacted():
         headers={"Content-Disposition": f"attachment; filename=zimabrain-session-redacted-{stamp}.md"},
     )
 
+
+
+@app.route("/answer-download-json")
+def answer_download_json():
+    latest = SESSION_HISTORY[-1] if SESSION_HISTORY else None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    if not latest:
+        data = {
+            "ok": False,
+            "app": APP_VERSION,
+            "message": "No answer yet.",
+        }
+    else:
+        metadata = _answer_metadata(latest.get("answer", ""))
+        data = {
+            "ok": True,
+            "app": APP_VERSION,
+            "question": latest.get("question", ""),
+            "time": latest.get("time", ""),
+            "sections": _answer_sections(latest.get("answer", "")),
+            "answer_markdown": latest.get("answer", ""),
+            **metadata,
+        }
+
+    return jsonify(data), 200, {"Content-Disposition": f"attachment; filename=zimabrain-answer-{stamp}.json"}
+
+
+@app.route("/session-download-json")
+def session_download_json():
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    items = []
+
+    for item in SESSION_HISTORY:
+        metadata = _answer_metadata(item.get("answer", ""))
+        items.append({
+            "question": item.get("question", ""),
+            "time": item.get("time", ""),
+            "sections": _answer_sections(item.get("answer", "")),
+            "answer_markdown": item.get("answer", ""),
+            **metadata,
+        })
+
+    return jsonify({
+        "ok": True,
+        "app": APP_VERSION,
+        "exported": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "history_count": len(SESSION_HISTORY),
+        "items": items,
+    }), 200, {"Content-Disposition": f"attachment; filename=zimabrain-session-{stamp}.json"}
+
+
 @app.route("/answer-download-html")
 def answer_download_html():
     answer = SESSION_HISTORY[-1]["answer"] if SESSION_HISTORY else "No answer yet."
@@ -2585,6 +2639,85 @@ def _answer_metadata(answer):
     }
 
 
+
+
+def _answer_sections(answer):
+    text = str(answer or "")
+
+    heading_map = {
+        "direct answer / severity": "direct_answer",
+        "critical findings": "critical_findings",
+        "warnings / context": "warnings",
+        "healthy / normal parsed evidence": "healthy_evidence",
+        "next safest step": "next_safest_step",
+        "safe recommendation": "safe_recommendation",
+        "forum-ready summary": "forum_ready_summary",
+        "forum ready summary": "forum_ready_summary",
+    }
+
+    inline_map = {
+        "disks needing attention from real values:": "attention_items",
+        "info only / unavailable smart fields:": "info_items",
+        "disks that look ok from available fields:": "healthy_evidence",
+        "healthy / normal parsed evidence:": "healthy_evidence",
+    }
+
+    sections = {
+        "direct_answer": [],
+        "attention_items": [],
+        "critical_findings": [],
+        "warnings": [],
+        "info_items": [],
+        "healthy_evidence": [],
+        "next_safest_step": [],
+        "safe_recommendation": [],
+        "forum_ready_summary": [],
+    }
+
+    current = None
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        clean = line.strip()
+
+        if not clean:
+            continue
+
+        low = clean.lower()
+
+        if clean.startswith("#### ") or clean.startswith("### "):
+            title = clean.lstrip("#").strip().lower()
+            current = heading_map.get(title)
+            continue
+
+        if low in inline_map:
+            current = inline_map[low]
+            continue
+
+        if current:
+            if clean.startswith("- "):
+                clean = clean[2:].strip()
+            if clean and clean.lower() != "none parsed.":
+                sections[current].append(clean)
+
+    list_keys = {
+        "attention_items",
+        "critical_findings",
+        "warnings",
+        "info_items",
+        "healthy_evidence",
+    }
+
+    out = {}
+    for key, value in sections.items():
+        if key in list_keys:
+            out[key] = value
+        else:
+            out[key] = "\n".join(value).strip()
+
+    return out
+
+
 @app.route("/api/v1/health")
 def api_v1_health():
     return jsonify({
@@ -2660,6 +2793,7 @@ def api_v1_ask():
     return jsonify({
         "ok": True,
         "question": question,
+        "sections": _answer_sections(answer),
         "answer_markdown": answer,
         **metadata,
     })
