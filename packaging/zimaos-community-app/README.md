@@ -5,7 +5,7 @@ Local ZimaOS diagnostic assistant for ZimaOS.
 ## App details
 
 - App name: ZimaBrain CE
-- Image: `gelbuilding/zimabrain-ce:1.6.2-beta`
+- Image: `gelbuilding/zimabrain-ce:1.6.0-beta`
 - Web UI port: `8601`
 - Persistent data path: `/DATA/AppData/zimabrain-ce`
 - Web UI: `http://<your-zima-ip>:8601`

@@ -1,8 +1,27 @@
+x-casaos:
+  architectures:
+    - amd64
+  main: zimabrain-ce
+  author: gelbuilding
+  category: Utilities
+  developer: gelbuilding
+  icon: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
+  thumbnail: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
+  title:
+    en_us: ZimaBrain CE
+  tagline:
+    en_us: Local ZimaOS diagnostic assistant
+  description:
+    en_us: Local verifier-first diagnostic assistant for ZimaOS.
+  index: /
+  scheme: http
+  port_map: "8601"
+
 name: zimabrain-ce
 
 services:
   zimabrain-ce:
-    image: gelbuilding/zimabrain-ce:1.6.2-beta
+    image: gelbuilding/zimabrain-ce:1.6.0-beta
     container_name: zimabrain-ce
     restart: unless-stopped
     privileged: true
@@ -32,7 +51,7 @@ services:
           description:
             en_us: ZimaBrain CE persistent data and reports
     labels:
-      icon: https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg
+      icon: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
       title: ZimaBrain CE
       description: Local ZimaOS diagnostic assistant
       index: /
