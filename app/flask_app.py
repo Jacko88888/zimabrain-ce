@@ -2487,6 +2487,90 @@ def session_download_redacted():
 
 
 
+
+
+
+
+def _answer_blocks(answer):
+    sections = _answer_sections(answer)
+
+    block_order = [
+        ("direct_answer", "Direct Answer", "text"),
+        ("attention_items", "Attention Items", "list"),
+        ("critical_findings", "Critical Findings", "list"),
+        ("warnings", "Warnings", "list"),
+        ("info_items", "Info / Unavailable Evidence", "list"),
+        ("healthy_evidence", "Healthy / Normal Evidence", "list"),
+        ("next_safest_step", "Next Safest Step", "text"),
+        ("safe_recommendation", "Safe Recommendation", "text"),
+        ("forum_ready_summary", "Forum Ready Summary", "text"),
+    ]
+
+    blocks = []
+    for key, title, kind in block_order:
+        value = sections.get(key, [] if kind == "list" else "")
+
+        if kind == "list":
+            if not value:
+                continue
+            blocks.append({
+                "key": key,
+                "title": title,
+                "type": "list",
+                "items": value,
+            })
+        else:
+            if not str(value).strip():
+                continue
+            blocks.append({
+                "key": key,
+                "title": title,
+                "type": "text",
+                "text": str(value).strip(),
+            })
+
+    return blocks
+
+
+def _answer_rows(answer):
+    sections = _answer_sections(answer)
+    rows = []
+
+    for group_key, group_title in [
+        ("attention_items", "Attention"),
+        ("critical_findings", "Critical"),
+        ("warnings", "Warning"),
+        ("info_items", "Info"),
+        ("healthy_evidence", "Healthy"),
+    ]:
+        for item in sections.get(group_key, []):
+            device = ""
+            detail = item
+
+            if ":" in item:
+                device, detail = item.split(":", 1)
+                device = device.strip()
+                detail = detail.strip()
+
+            rows.append({
+                "group": group_title,
+                "device": device,
+                "detail": detail,
+                "raw": item,
+            })
+
+    return rows
+
+
+def json_download_response(data, filename):
+    body = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    return Response(
+        body,
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @app.route("/answer-download-json")
 def answer_download_json():
     latest = SESSION_HISTORY[-1] if SESSION_HISTORY else None
@@ -2505,12 +2589,14 @@ def answer_download_json():
             "app": APP_VERSION,
             "question": latest.get("question", ""),
             "time": latest.get("time", ""),
-            "sections": _answer_sections(latest.get("answer", "")),
-            "answer_markdown": latest.get("answer", ""),
-            **metadata,
+            "verification_status": metadata.get("verification_status", "UNKNOWN"),
+            "active_layer": metadata.get("active_layer", ""),
+            "layer_file": metadata.get("layer_file", ""),
+            "answer_blocks": _answer_blocks(latest.get("answer", "")),
+            "answer_rows": _answer_rows(latest.get("answer", "")),
         }
 
-    return jsonify(data), 200, {"Content-Disposition": f"attachment; filename=zimabrain-answer-{stamp}.json"}
+    return json_download_response(data, f"zimabrain-answer-{stamp}.json")
 
 
 @app.route("/session-download-json")
@@ -2523,18 +2609,20 @@ def session_download_json():
         items.append({
             "question": item.get("question", ""),
             "time": item.get("time", ""),
-            "sections": _answer_sections(item.get("answer", "")),
-            "answer_markdown": item.get("answer", ""),
-            **metadata,
+            "verification_status": metadata.get("verification_status", "UNKNOWN"),
+            "active_layer": metadata.get("active_layer", ""),
+            "layer_file": metadata.get("layer_file", ""),
+            "answer_blocks": _answer_blocks(item.get("answer", "")),
+            "answer_rows": _answer_rows(item.get("answer", "")),
         })
 
-    return jsonify({
+    return json_download_response({
         "ok": True,
         "app": APP_VERSION,
         "exported": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "history_count": len(SESSION_HISTORY),
         "items": items,
-    }), 200, {"Content-Disposition": f"attachment; filename=zimabrain-session-{stamp}.json"}
+    }, f"zimabrain-session-{stamp}.json")
 
 
 @app.route("/answer-download-html")
@@ -2794,6 +2882,8 @@ def api_v1_ask():
         "ok": True,
         "question": question,
         "sections": _answer_sections(answer),
+        "answer_blocks": _answer_blocks(answer),
+        "answer_rows": _answer_rows(answer),
         "answer_markdown": answer,
         **metadata,
     })
