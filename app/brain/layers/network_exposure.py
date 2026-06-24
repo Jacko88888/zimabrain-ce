@@ -84,7 +84,11 @@ def answer(bundle):
     lines = []
 
     evidence = bundle.get("same_report_evidence", {})
-    docker_user = evidence.get("docker_user", "")
+    docker_user = evidence.get("docker_user", "") or evidence.get("zfw_chains", "")
+    zfw_status = evidence.get("zfw_status", "")
+    zfw_files = evidence.get("zfw_files", "")
+    zfw_chains = evidence.get("zfw_chains", "")
+    self_docker_security = evidence.get("self_docker_security", "")
     docker_rows = _parse_docker_access(bundle)
     docker_ps_rows = _parse_docker_ps(bundle)
 
@@ -149,6 +153,35 @@ def answer(bundle):
         lines.append("- No Cloudflare, Tailscale, proxy, tunnel, or similar remote-access container names were detected from parsed evidence.")
 
     lines.append("")
+    lines.append("### ZimaBrain CE self audit")
+    if self_docker_security.strip():
+        lines.append("- ZimaBrain CE inspected its own container security settings.")
+        lines.append(f"- {self_docker_security.strip()}")
+        low_self = self_docker_security.lower()
+        if "privileged=true" in low_self or "pidmode=host" in low_self or "dockersock=" in low_self:
+            lines.append("- Self-audit warning: this container has elevated host visibility/access for evidence collection.")
+            lines.append("- This is useful for local verification, but should not be exposed without access control.")
+    else:
+        lines.append("- No self-audit Docker security evidence was collected for ZimaBrain CE.")
+
+    lines.append("")
+    lines.append("### ZFW firewall status")
+    zfw_installed = bool(zfw_files.strip()) or "zfw-ui.service" in zfw_status or "zfw.raw" in zfw_files
+    zfw_active = zfw_status.strip() == "active"
+    zfw_applied = "ZFW-IN" in zfw_chains or "ZFW-IN6" in zfw_chains or "ZFW-DOCK-DROP" in zfw_chains
+
+    if zfw_installed:
+        lines.append("- ZFW appears installed from host evidence.")
+        lines.append(f"- zfw-ui.service: {zfw_status.strip() or 'unknown'}")
+        if zfw_applied:
+            lines.append("- ZFW firewall chains/rules appear applied.")
+        else:
+            lines.append("- ZFW is installed/active, but firewall rules do not appear applied yet.")
+            lines.append("- Current evidence suggests DOCKER-USER may still be pass-through until Safe-Apply/Commit is used.")
+    else:
+        lines.append("- ZFW was not detected from host service, module, or rules evidence.")
+
+    lines.append("")
     lines.append("### DOCKER-USER firewall chain")
     if docker_user.strip():
         lines.append("- DOCKER-USER evidence was collected.")
@@ -161,7 +194,7 @@ def answer(bundle):
 
     lines.append("")
     lines.append("### How to interpret this")
-    lines.append("- Published Docker ports are reachable from the LAN unless another firewall or router rule blocks them.")
+    lines.append("- A published Docker port only proves Docker has mapped the port; LAN reachability still depends on host firewall, ZFW, router, VLAN, and bind rules.")
     lines.append("- A tunnel container can expose services externally even when router port-forwarding is not used.")
     lines.append("- A container with `/DATA` write access and a published port deserves extra attention.")
     lines.append("- Do not change firewall rules until the service, port, and access path are confirmed.")

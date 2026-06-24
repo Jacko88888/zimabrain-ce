@@ -570,6 +570,23 @@ def classify(question):
     ):
         _score(candidates, "permissions_ownership_question", 145.0, ["gate:permission-hard-route", "entity:permissions"])
 
+    # Hard priority: ZimaBrain self-audit / own privilege questions are network/security risk questions.
+    if (
+        ("zimabrain" in ql or "zima brain" in ql or "itself" in qt or "own" in qt or "self" in qt)
+        and ({"privileged", "privilege", "privileges", "elevated", "root", "risk", "security", "docker.sock", "dockersock"} & qt or "docker socket" in ql)
+    ):
+        _score(candidates, "network_exposure_question", 190.0, ["gate:self-audit-hard-route", "entity:self-security"])
+
+    # Hard priority: firewall / ZFW / LAN exposure questions are network/security risk questions.
+    if (
+        {"zfw", "firewall", "iptables", "docker-user", "blocked", "blocking", "protecting", "protect", "enforcing", "enforce", "reachable", "lan"} & qt
+        or "docker-user" in ql
+        or "docker user" in ql
+        or "lan access" in ql
+        or "safe-apply" in ql
+    ):
+        _score(candidates, "network_exposure_question", 180.0, ["gate:zfw-firewall-hard-route", "entity:network-exposure"])
+
     # Hard priority: public exposure questions are network/security risk questions.
     if (
         {"expose", "exposed", "public", "publicly", "internet", "wan"} & qt
