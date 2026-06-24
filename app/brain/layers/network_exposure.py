@@ -121,13 +121,54 @@ def answer(bundle):
         if _is_remote_access_name(row["name"]):
             remote_access.append(f"{row['name']}: {row['ports'] or row['status']}")
 
+    remote_by_name = {}
+    for item in remote_access:
+        name = item.split(":", 1)[0].strip()
+        current = remote_by_name.get(name)
+        if current is None:
+            remote_by_name[name] = item
+            continue
+        if "no parsed published port" in current and "no parsed published port" not in item:
+            remote_by_name[name] = item
+
+    remote_access = list(remote_by_name.values())
+
+    lines.append("### Top exposure risks first")
+
+    top_risks = []
+
+    if data_rw_published:
+        top_risks.append(f"{len(data_rw_published)} container(s) have full `/DATA` read-write access and published ports.")
+
+    if remote_access:
+        top_risks.append(f"{len(set(remote_access))} remote-access / tunnel / proxy indicator(s) were detected.")
+
+    if self_docker_security.strip():
+        low_self = self_docker_security.lower()
+        if "privileged=true" in low_self or "pidmode=host" in low_self or "dockersock=" in low_self:
+            top_risks.append("ZimaBrain CE has elevated host visibility/access for evidence collection.")
+
+    if zfw_status.strip() == "active" and not ("ZFW-IN" in zfw_chains or "ZFW-IN6" in zfw_chains or "ZFW-DOCK-DROP" in zfw_chains):
+        top_risks.append("ZFW service appears active, but parsed firewall chains do not show rules applied yet.")
+
+    if docker_user.strip() and ("-A DOCKER-USER -j RETURN" in docker_user or docker_user.strip() == "-N DOCKER-USER"):
+        top_risks.append("DOCKER-USER appears open or mostly pass-through from parsed evidence.")
+
+    if top_risks:
+        for item in top_risks:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- No top exposure risk was detected from the parsed evidence.")
+
+    lines.append("")
     lines.append("### Published Docker ports")
-    if published:
-        for item in published[:30]:
+    port_source = published if published else docker_ps_ports
+    if port_source:
+        lines.append(f"- Parsed published-port entries: {len(port_source)}")
+        for item in port_source[:15]:
             lines.append(f"- {item}")
-    elif docker_ps_ports:
-        for item in docker_ps_ports[:30]:
-            lines.append(f"- {item}")
+        if len(port_source) > 15:
+            lines.append(f"- Additional published-port entries hidden from summary: {len(port_source) - 15}")
     else:
         lines.append("- No published Docker ports were parsed from the current report.")
 
