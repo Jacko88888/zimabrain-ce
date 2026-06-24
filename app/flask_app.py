@@ -1672,6 +1672,7 @@ iframe {{
       <span class="layer-chip-clean">Dashboard Evidence Loader</span>
       <span class="layer-chip-clean">Evidence Normalizer</span>
       <span class="layer-chip-clean">Critical Same-Report Verifier</span>
+      <span class="layer-chip-clean quality">Dashboard Container Count Verification</span>
       <span class="layer-chip-clean">Question Router</span>
       <span class="layer-chip-clean">Intent Brain Router</span>
       <span class="layer-chip-clean">Verified Answer Builder</span>
@@ -1679,6 +1680,7 @@ iframe {{
       <span class="layer-chip-clean manual">Official Manual Knowledge Engine</span>
       <span class="layer-chip-clean manual">App Verified Install Guides</span>
       <span class="layer-chip-clean manual">Third-Party App Store Index</span>
+      <span class="layer-chip-clean manual">Hardware Compatibility Layer</span>
     </div>
   </div>
 
@@ -1688,6 +1690,7 @@ iframe {{
       <span class="layer-chip-clean">Dashboard Alerts</span>
       <span class="layer-chip-clean">Failed Units</span>
       <span class="layer-chip-clean">Container State</span>
+      <span class="layer-chip-clean quality">Container Running Count</span>
       <span class="layer-chip-clean">Report Comparison</span>
       <span class="layer-chip-clean">Log Intake / Uploaded Evidence</span>
       <span class="layer-chip-clean">Final Recommendation / Repair Planner</span>
@@ -1726,6 +1729,8 @@ iframe {{
     <div class="layer-col-title">Network / Access</div>
     <div class="layer-list-clean">
       <span class="layer-chip-clean">Network Exposure / Firewall</span>
+      <span class="layer-chip-clean quality">ZFW Firewall Verification</span>
+      <span class="layer-chip-clean quality">ZimaBrain CE Self-Audit</span>
       <span class="layer-chip-clean">Network Connectivity Diagnostics</span>
       <span class="layer-chip-clean">SMB / Shares Diagnostics</span>
       <span class="layer-chip-clean">Permissions / Ownership Diagnostics</span>
@@ -1739,6 +1744,7 @@ iframe {{
       <span class="layer-chip-clean">ZimaOS Update / Rollback Safety</span>
       <span class="layer-chip-clean">Install / Boot Diagnostics</span>
       <span class="layer-chip-clean">GPU / AI Runtime</span>
+      <span class="layer-chip-clean manual">PCIe / Hardware Compatibility</span>
       <span class="layer-chip-clean">Disk Commands</span>
       <span class="layer-chip-clean">System Commands</span>
       <span class="layer-chip-clean">Network Commands</span>
