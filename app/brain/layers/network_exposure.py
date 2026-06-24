@@ -80,6 +80,94 @@ def _is_remote_access_name(name):
     ])
 
 
+
+
+def _published_bind_map(rows):
+    bind_map = {}
+
+    for row in rows:
+        name = row.get("name", "")
+        ports = row.get("ports", "")
+
+        for item in ports.split(";"):
+            if "=>" not in item:
+                continue
+
+            right = item.split("=>", 1)[1]
+            for hp in right.split(","):
+                hp = hp.strip()
+                if not hp or ":" not in hp:
+                    continue
+
+                host_ip, host_port = hp.rsplit(":", 1)
+                host_ip = host_ip.strip("[]") or "unknown"
+                host_port = host_port.strip()
+
+                if not host_port.isdigit():
+                    continue
+
+                bind_map.setdefault((name, host_port), set()).add(host_ip)
+
+    return bind_map
+
+
+def _bind_label(bind_ips):
+    if not bind_ips:
+        return "unknown"
+
+    ordered = sorted(bind_ips)
+    return ",".join(ordered)
+
+
+def _is_localhost_only_bind(bind_ips):
+    if not bind_ips:
+        return False
+
+    return all(ip in {"127.0.0.1", "::1", "localhost"} for ip in bind_ips)
+
+def _parse_port_reachability(bundle):
+    text = bundle.get("same_report_evidence", {}).get("port_reachability", "")
+    rows = []
+    host_ip = ""
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        if line.startswith("HOST_LAN_IP="):
+            host_ip = line.split("=", 1)[1].strip()
+            continue
+
+        parts = line.split("|")
+        if len(parts) < 5:
+            continue
+
+        name = parts[0].strip()
+        port = parts[1].strip()
+        local = ""
+        lan = ""
+        lan_ip = host_ip
+
+        for part in parts[2:]:
+            if part.startswith("localhost="):
+                local = part.split("=", 1)[1].strip()
+            elif part.startswith("lan="):
+                lan = part.split("=", 1)[1].strip()
+            elif part.startswith("lan_ip="):
+                lan_ip = part.split("=", 1)[1].strip()
+
+        rows.append({
+            "name": name,
+            "port": port,
+            "localhost": local,
+            "lan": lan,
+            "lan_ip": lan_ip,
+        })
+
+    return host_ip, rows
+
+
 def answer(bundle):
     lines = []
 
@@ -91,6 +179,8 @@ def answer(bundle):
     self_docker_security = evidence.get("self_docker_security", "")
     docker_rows = _parse_docker_access(bundle)
     docker_ps_rows = _parse_docker_ps(bundle)
+    reachability_host_ip, reachability_rows = _parse_port_reachability(bundle)
+    bind_map = _published_bind_map(docker_rows)
 
     lines.append("- This is a network exposure / firewall verification question.")
     lines.append("- The answer comes from the Network Exposure / Firewall Layer using same-report Docker and firewall evidence.")
@@ -154,6 +244,23 @@ def answer(bundle):
     if docker_user.strip() and ("-A DOCKER-USER -j RETURN" in docker_user or docker_user.strip() == "-N DOCKER-USER"):
         top_risks.append("DOCKER-USER appears open or mostly pass-through from parsed evidence.")
 
+    blocked_reachable = []
+    localhost_only_reachable = []
+
+    for r in reachability_rows:
+        if r.get("localhost") == "open" and r.get("lan") == "closed":
+            bind_ips = bind_map.get((r.get("name", ""), r.get("port", "")), set())
+            if _is_localhost_only_bind(bind_ips):
+                localhost_only_reachable.append(r)
+            else:
+                blocked_reachable.append(r)
+
+    if blocked_reachable:
+        top_risks.append(f"{len(blocked_reachable)} published port(s) answer locally but not on the host LAN IP; firewall, ZFW, VLAN, router path, or bind behaviour may be blocking access.")
+
+    if localhost_only_reachable:
+        top_risks.append(f"{len(localhost_only_reachable)} published port(s) appear intentionally localhost-only and are not reachable on the host LAN IP.")
+
     if top_risks:
         for item in top_risks:
             lines.append(f"- {item}")
@@ -171,6 +278,27 @@ def answer(bundle):
             lines.append(f"- Additional published-port entries hidden from summary: {len(port_source) - 15}")
     else:
         lines.append("- No published Docker ports were parsed from the current report.")
+
+    lines.append("")
+    lines.append("### Port reachability self-check")
+    if reachability_rows:
+        lines.append(f"- Host LAN IP used for reachability probe: `{reachability_host_ip or 'unknown'}`")
+        lines.append("- Localhost open + LAN closed can mean either an intentional localhost-only bind or a firewall/ZFW/VLAN/router/bind issue. The bind field helps separate those cases.")
+        for r in reachability_rows[:30]:
+            bind_ips = bind_map.get((r.get("name", ""), r.get("port", "")), set())
+            bind = _bind_label(bind_ips)
+            note = ""
+            if r.get("localhost") == "open" and r.get("lan") == "closed":
+                if _is_localhost_only_bind(bind_ips):
+                    note = " expected-localhost-only"
+                else:
+                    note = " possible-firewall-or-bind-block"
+            lines.append(f"- {r['name']}:{r['port']} bind={bind} localhost={r['localhost']} lan={r['lan']} lan_ip={r['lan_ip']}{note}")
+        if len(reachability_rows) > 30:
+            lines.append(f"- Additional reachability entries hidden from summary: {len(reachability_rows) - 30}")
+    else:
+        lines.append("- No live port reachability probe evidence was collected.")
+
 
     lines.append("")
     lines.append("### High-risk exposure checks")
@@ -235,13 +363,13 @@ def answer(bundle):
 
     lines.append("")
     lines.append("### How to interpret this")
-    lines.append("- A published Docker port only proves Docker has mapped the port; LAN reachability still depends on host firewall, ZFW, router, VLAN, and bind rules.")
+    lines.append("- A published Docker port only proves Docker has mapped the port; LAN reachability still depends on host firewall, ZFW, router, VLAN, bind rules, and whether the service answers on the host LAN IP.")
     lines.append("- A tunnel container can expose services externally even when router port-forwarding is not used.")
     lines.append("- A container with `/DATA` write access and a published port deserves extra attention.")
     lines.append("- Do not change firewall rules until the service, port, and access path are confirmed.")
 
     return {
         "lines": lines,
-        "next_step": "Review the listed published ports and any tunnel/proxy containers, then confirm authentication and firewall restrictions before exposing services further.",
-        "forum_summary": "Network exposure should be verified from Docker published ports, tunnel/proxy containers, and DOCKER-USER firewall evidence. Do not assume a service is safe just because it is local. Confirm the exact port, service, authentication, and firewall path before exposing it.",
+        "next_step": "Review published ports, reachability results, tunnel/proxy containers, authentication, and firewall restrictions before exposing services further.",
+        "forum_summary": "Network exposure should be verified from Docker published ports, live localhost/LAN reachability, tunnel/proxy containers, and DOCKER-USER firewall evidence. Do not assume a service is safe just because Docker published a port. Confirm the exact port, service, authentication, bind address, and firewall path before exposing it.",
     }

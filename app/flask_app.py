@@ -993,7 +993,36 @@ def collect_same_report_evidence():
         "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
         "smart": run_host_command("for d in /dev/sd?; do echo \"===== SMART $d =====\"; smartctl -H -A \"$d\" 2>&1 | sed -n '1,140p'; done 2>/dev/null || true", timeout=30),
         "nvme_smart": run_host_command("for n in /dev/nvme?n1; do echo \"===== NVME $n =====\"; nvme smart-log \"$n\" 2>&1 | sed -n '1,90p'; done 2>/dev/null || true", timeout=30),
-        "zfw_status": run_host_command("systemctl is-active zfw-ui.service 2>/dev/null || true"),
+"port_reachability": run_host_command(
+            r"""LAN_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
+[ -z "$LAN_IP" ] && LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+echo "HOST_LAN_IP=${LAN_IP:-unknown}"
+docker ps --format '{{.Names}}|{{.Ports}}' 2>/dev/null | while IFS='|' read -r name ports; do
+  echo "$ports" | grep -oE '([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:|:::|0.0.0.0:|\[::\]:)?[0-9]+->' | sed 's/.*://;s/->//' | sort -nu | while read -r port; do
+    [ -z "$port" ] && continue
+    LOCAL="closed"
+    LAN="unknown"
+    python3 - "$port" <<'PY2' >/dev/null 2>&1 && LOCAL="open"
+import socket, sys
+port=int(sys.argv[1])
+s=socket.create_connection(("127.0.0.1", port), timeout=1.5)
+s.close()
+PY2
+    if [ -n "$LAN_IP" ]; then
+      python3 - "$LAN_IP" "$port" <<'PY2' >/dev/null 2>&1 && LAN="open" || LAN="closed"
+import socket, sys
+host=sys.argv[1]
+port=int(sys.argv[2])
+s=socket.create_connection((host, port), timeout=1.5)
+s.close()
+PY2
+    fi
+    echo "${name}|${port}|localhost=${LOCAL}|lan=${LAN}|lan_ip=${LAN_IP:-unknown}"
+  done
+done | head -120""",
+            timeout=45,
+        ),
+                "zfw_status": run_host_command("systemctl is-active zfw-ui.service 2>/dev/null || true"),
         "zfw_files": run_host_command("ls -l /var/lib/extensions/zfw.raw /DATA/zfw/zfw /DATA/zfw/rules.json 2>/dev/null || true"),
         "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
         "self_docker_security": run_host_command("docker inspect zimabrain-ce-flask-8601 --format 'User={{.Config.User}} Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}} SecurityOpt={{.HostConfig.SecurityOpt}} CapAdd={{.HostConfig.CapAdd}}' 2>/dev/null || true; docker inspect zimabrain-ce-flask-8601 --format '{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' 2>/dev/null || true"),
