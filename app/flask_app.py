@@ -13,6 +13,7 @@ from brain import answer_builder
 import os
 import secrets
 import hmac
+from werkzeug.security import generate_password_hash, check_password_hash
 
 APP_NAME = "ZimaBrain CE"
 APP_SUBTITLE = "Local Zima Knowledge Assistant"
@@ -21,6 +22,7 @@ APP_VERSION = "v1.6.0-beta"
 DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
 
 app = Flask(__name__)
+
 
 def _load_secret_key():
     env_key = os.environ.get("ZIMABRAIN_SECRET_KEY", "").strip()
@@ -54,16 +56,54 @@ app.config.update(
 )
 
 ZIMABRAIN_PASSWORD = os.environ.get("ZIMABRAIN_PASSWORD", "").strip()
+PASSWORD_HASH_PATH = "/data/.zimabrain_password_hash"
+
+
+def _read_password_hash():
+    try:
+        if os.path.exists(PASSWORD_HASH_PATH):
+            with open(PASSWORD_HASH_PATH, "r", encoding="utf-8") as f:
+                return f.read().strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _write_password_hash(password):
+    os.makedirs(os.path.dirname(PASSWORD_HASH_PATH), exist_ok=True)
+    with open(PASSWORD_HASH_PATH, "w", encoding="utf-8") as f:
+        f.write(generate_password_hash(password))
+    try:
+        os.chmod(PASSWORD_HASH_PATH, 0o600)
+    except Exception:
+        pass
+
+
+def password_configured():
+    return bool(ZIMABRAIN_PASSWORD or _read_password_hash())
 
 
 def security_enabled():
-    return bool(ZIMABRAIN_PASSWORD)
+    # Security is always enabled. First run goes to setup, then login.
+    return True
 
 
 def is_logged_in():
-    if not security_enabled():
-        return True
     return bool(session.get("zimabrain_authenticated"))
+
+
+def verify_password(password):
+    if ZIMABRAIN_PASSWORD:
+        return hmac.compare_digest(password, ZIMABRAIN_PASSWORD)
+
+    stored = _read_password_hash()
+    if stored:
+        try:
+            return check_password_hash(stored, password)
+        except Exception:
+            return False
+
+    return False
 
 
 def csrf_token():
@@ -75,23 +115,16 @@ def csrf_token():
 
 
 def csrf_field():
-    if not security_enabled():
-        return ""
     return f'<input type="hidden" name="csrf_token" value="{csrf_token()}">'
 
 
 def auth_status_html():
-    if not security_enabled():
-        return """
-        <div class="card">
-          <h3>Security</h3>
-          <p class="muted">Password gate is not enabled. Set <code>ZIMABRAIN_PASSWORD</code> in compose to require login.</p>
-        </div>
-        """
+    source = "compose environment" if ZIMABRAIN_PASSWORD else "first-run setup"
     return f"""
     <div class="card">
       <h3>Security</h3>
       <p class="ok">Password gate enabled.</p>
+      <p class="muted">Password source: {esc(source)}</p>
       <form method="post" action="/logout">
         {csrf_field()}
         <button class="button" type="submit">Logout</button>
@@ -103,13 +136,11 @@ def auth_status_html():
 def redact_support_text(text):
     text = str(text or "")
 
-    # Redact IPv4 addresses, common token/secret/password patterns, bearer strings, and long hex keys.
     text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<LAN_IP>", text)
     text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|authorization|bearer)\s*[:=]\s*['\"]?[^'\"\s<>]+", r"\1=<redacted>", text)
     text = re.sub(r"(?i)bearer\s+[a-z0-9._\-]+", "Bearer <redacted>", text)
     text = re.sub(r"\b[a-f0-9]{32,}\b", "<redacted_hex>", text)
 
-    # Keep useful context but hide deeper private paths.
     text = re.sub(r"/DATA/AppData/[^\\s'\"<>]+", "/DATA/AppData/<redacted>", text)
     text = re.sub(r"/media/[^\\s'\"<>]+", "/media/<redacted>", text)
     text = re.sub(r"/var/lib/casaos_data/[^\\s'\"<>]+", "/var/lib/casaos_data/<redacted>", text)
@@ -119,14 +150,17 @@ def redact_support_text(text):
 
 @app.before_request
 def security_gate():
-    allowed_paths = {"/login", "/health"}
+    allowed_paths = {"/login", "/setup", "/health"}
     if request.path.startswith("/assets/") or request.path in allowed_paths:
         return None
 
-    if security_enabled() and not is_logged_in():
+    if not password_configured():
+        return redirect("/setup")
+
+    if not is_logged_in():
         return redirect("/login")
 
-    if security_enabled() and request.method == "POST":
+    if request.method == "POST":
         sent = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
         if not expected or not hmac.compare_digest(str(sent), str(expected)):
@@ -135,15 +169,68 @@ def security_gate():
     return None
 
 
+@app.route("/setup", methods=["GET", "POST"])
+def setup_password():
+    if password_configured():
+        return redirect("/login")
+
+    error = ""
+    if request.method == "POST":
+        p1 = request.form.get("password", "")
+        p2 = request.form.get("password_confirm", "")
+
+        if len(p1) < 8:
+            error = "Password must be at least 8 characters."
+        elif p1 != p2:
+            error = "Passwords do not match."
+        else:
+            _write_password_hash(p1)
+            session["zimabrain_authenticated"] = True
+            session["csrf_token"] = secrets.token_hex(24)
+            return redirect("/")
+
+    error_html = f"<p style='color:#fecaca;font-weight:800'>{esc(error)}</p>" if error else ""
+    return f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ZimaBrain CE First Run Setup</title>
+<style>
+body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;margin:0;padding:30px}}
+.card{{max-width:500px;margin:8vh auto;background:#101827;border:1px solid #263241;border-radius:18px;padding:28px}}
+input{{width:100%;box-sizing:border-box;padding:13px;margin-top:10px;border-radius:10px;border:1px solid #334155;background:#020617;color:#e8edf2;font-size:16px}}
+button{{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:900;font-size:15px;cursor:pointer}}
+.muted{{color:#9aa8b5;font-size:14px;line-height:1.55}}
+code{{background:#020617;padding:2px 6px;border-radius:6px}}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>Create ZimaBrain CE Password</h2>
+<p class="muted">First-run setup. Create a password before showing local ZimaOS diagnostics.</p>
+{error_html}
+<form method="post" action="/setup">
+  <input type="password" name="password" placeholder="New password" autofocus>
+  <input type="password" name="password_confirm" placeholder="Confirm password">
+  <button type="submit">Create Password</button>
+</form>
+<p class="muted"><b>Forgot password later?</b><br>Remove <code>/DATA/AppData/zimabrain-ce/.zimabrain_password_hash</code> or set <code>ZIMABRAIN_PASSWORD</code> in compose and restart the container.</p>
+</div>
+</body>
+</html>
+"""
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if not security_enabled():
-        return redirect("/")
+    if not password_configured():
+        return redirect("/setup")
 
     error = ""
     if request.method == "POST":
         password = request.form.get("password", "")
-        if hmac.compare_digest(password, ZIMABRAIN_PASSWORD):
+        if verify_password(password):
             session["zimabrain_authenticated"] = True
             session["csrf_token"] = secrets.token_hex(24)
             return redirect("/")
@@ -168,13 +255,13 @@ code{{background:#020617;padding:2px 6px;border-radius:6px}}
 <body>
 <div class="card">
 <h2>ZimaBrain CE</h2>
-<p class="muted">Password required before showing local system diagnostics.</p>
+<p class="muted">Password required before showing local ZimaOS diagnostics.</p>
 {error_html}
 <form method="post" action="/login">
   <input type="password" name="password" placeholder="Password" autofocus>
   <button type="submit">Login</button>
 </form>
-<p class="muted"><b>Forgot password?</b><br>Edit or remove <code>ZIMABRAIN_PASSWORD</code> in your compose file and restart the container.</p>
+<p class="muted"><b>Forgot password?</b><br>Remove <code>/DATA/AppData/zimabrain-ce/.zimabrain_password_hash</code> or edit <code>ZIMABRAIN_PASSWORD</code> in your compose file and restart the container.</p>
 </div>
 </body>
 </html>
@@ -184,7 +271,7 @@ code{{background:#020617;padding:2px 6px;border-radius:6px}}
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
     session.clear()
-    return redirect("/login" if security_enabled() else "/")
+    return redirect("/login" if password_configured() else "/setup")
 
 
 @app.route("/assets/<path:filename>")

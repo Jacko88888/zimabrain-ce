@@ -108,3 +108,5 @@ docs/zimaos-official/raw/
 *.streamlit-backup
 *.before-flask
 .zimabrain_secret_key
+.env*
+.zimabrain_password_hash
