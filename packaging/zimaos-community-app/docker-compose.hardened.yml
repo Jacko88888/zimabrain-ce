@@ -1,0 +1,84 @@
+x-casaos:
+  architectures:
+    - amd64
+  main: zimabrain-ce
+  author: gelbuilding
+  category: Utilities
+  developer: gelbuilding
+  icon: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
+  thumbnail: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
+  title:
+    en_us: ZimaBrain CE
+  tagline:
+    en_us: Local ZimaOS diagnostic assistant
+  description:
+    en_us: Local verifier-first diagnostic assistant for ZimaOS. Hardened compose variant with reduced container privileges.
+  index: /
+  scheme: http
+  port_map: "8601"
+
+name: zimabrain-ce-hardened
+
+services:
+  zimabrain-ce:
+    image: gelbuilding/zimabrain-ce:1.6.0-beta
+    container_name: zimabrain-ce
+    restart: unless-stopped
+
+    environment:
+      - ZIMABRAIN_PASSWORD=${ZIMABRAIN_PASSWORD:-}
+      - ZIMABRAIN_SECRET_KEY=${ZIMABRAIN_SECRET_KEY:-}
+
+    # Hardened mode:
+    # - no blanket privileged mode
+    # - no host PID namespace
+    # - no new privileges
+    # - all Linux capabilities dropped
+    # - Docker socket remains read-only for container inventory evidence
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    ports:
+      - "8601:8601"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8601/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    volumes:
+      - /DATA/AppData/zimabrain-ce:/data
+      - /DATA/AppData/zimabrain-ce/docs:/app/docs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/hostname:/host/etc/hostname:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_us: Timezone
+      ports:
+        - container: "8601"
+          description:
+            en_us: Web UI
+      volumes:
+        - container: /data
+          description:
+            en_us: ZimaBrain CE persistent data and reports
+
+    labels:
+      icon: "https://raw.githubusercontent.com/Jacko88888/zimabrain-ce/main/app/assets/zimabrain-ce-logo.svg"
+      title: ZimaBrain CE
+      description: Local ZimaOS diagnostic assistant hardened mode
+      index: /
+      scheme: http
+      port_map: "8601"
