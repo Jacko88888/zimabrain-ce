@@ -58,13 +58,71 @@ def _question_terms(question):
     # Keep common multi-word app names.
     for phrase in [
         "home assistant", "open webui", "cloudflare tunnel", "borg web ui",
-        "code server", "calibre web", "actual budget", "paperless ngx"
+        "code server", "calibre web", "actual budget", "paperless ngx",
+        "reverse proxy", "nginx proxy manager", "nginxproxymanager"
     ]:
         if phrase in q:
             phrases.append(phrase)
 
     return phrases + words
 
+
+
+
+def _is_reverse_proxy_question(question):
+    q = _normalise(question)
+    return (
+        "reverse proxy" in q
+        or "nginx proxy" in q
+        or "nginxproxymanager" in q
+        or ("nginx" in q and "proxy" in q)
+    )
+
+
+def _is_bad_reverse_proxy_match(row):
+    blob = _normalise(" ".join([
+        row.get("app_name", ""),
+        row.get("description", ""),
+        row.get("images", ""),
+        row.get("store_name", ""),
+    ]))
+
+    bad_terms = [
+        "reverse shell",
+        "reverse_shell",
+        "reverse shell generator",
+        "pentest",
+        "vulnerability",
+        "vuldocker",
+        "exploit",
+    ]
+
+    return any(term in blob for term in bad_terms)
+
+
+def _reverse_proxy_bonus(question, row):
+    if not _is_reverse_proxy_question(question):
+        return 0
+
+    blob = _normalise(" ".join([
+        row.get("app_name", ""),
+        row.get("description", ""),
+        row.get("images", ""),
+    ]))
+    compact = _compact(blob)
+
+    bonus = 0
+
+    if "nginx proxy manager" in blob or "nginxproxymanager" in compact:
+        bonus += 180
+    if "jc21 nginx proxy manager" in blob or "jc21nginxproxymanager" in compact:
+        bonus += 80
+    if "reverse proxy" in blob:
+        bonus += 70
+    if "nginx" in blob and "proxy" in blob:
+        bonus += 60
+
+    return bonus
 
 def search_apps(question, limit=8):
     rows = _load_rows()
@@ -74,7 +132,12 @@ def search_apps(question, limit=8):
         return []
 
     scored = []
+    reverse_proxy_question = _is_reverse_proxy_question(question)
+
     for row in rows:
+        if reverse_proxy_question and _is_bad_reverse_proxy_match(row):
+            continue
+
         app_name = row.get("app_name", "")
         hay = _normalise(" ".join([
             row.get("app_name", ""),
@@ -95,6 +158,8 @@ def search_apps(question, limit=8):
                 score += 55
             elif t in hay:
                 score += 20
+
+        score += _reverse_proxy_bonus(question, row)
 
         if score:
             scored.append((score, row))
