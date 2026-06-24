@@ -100,6 +100,25 @@ def _collect_findings(text: str):
     ok = []
 
     current = "unknown"
+    current_kind = ""
+    smart_passed_devices = set()
+    smart_attr_seen = {}
+    smart_visibility_limited = set()
+    controller_visibility_hints = set()
+
+    def mark_attr(dev: str):
+        if not dev or dev == "unknown":
+            return
+        smart_attr_seen[dev] = smart_attr_seen.get(dev, 0) + 1
+
+    def mark_visibility_limited(dev: str, reason: str):
+        if not dev or dev == "unknown":
+            return
+        key = (dev, reason)
+        if key in smart_visibility_limited:
+            return
+        smart_visibility_limited.add(key)
+        warning.append(f"{dev}: SMART visibility limited - {reason}")
 
     for line in str(text or "").splitlines():
         stripped = line.strip()
@@ -107,11 +126,17 @@ def _collect_findings(text: str):
 
         m_dev = re.search(r"===== (SMART|NVME)\s+([^=]+?)\s*=====", stripped, re.I)
         if m_dev:
+            current_kind = m_dev.group(1).upper()
             current = m_dev.group(2).strip()
             continue
 
+        if any(x in lower for x in ("raid", "sas", "hba", "megaraid", "silicon image", "sat", "scsi")):
+            if current and current != "unknown":
+                controller_visibility_hints.add(current)
+
         if "smart overall-health self-assessment test result:" in lower:
             if "passed" in lower:
+                smart_passed_devices.add(current)
                 ok.append(f"{current}: SMART overall-health PASSED")
             elif "failed" in lower:
                 critical.append(f"{current}: SMART overall-health FAILED")
@@ -119,10 +144,17 @@ def _collect_findings(text: str):
                 warning.append(f"{current}: SMART overall-health unclear: {stripped}")
 
         if "smart status not supported" in lower or "attribute check" in lower:
-            warning.append(f"{current}: SMART status is incomplete / attribute-based only")
+            mark_visibility_limited(current, "status is incomplete / attribute-based only")
 
-        if "unknown usb bridge" in lower or "please specify device type with the -d option" in lower:
-            warning.append(f"{current}: SMART cannot verify this USB bridge without a device type option")
+        if "unknown usb bridge" in lower or "please specify device type with the -d option" in lower or "specify device type" in lower:
+            mark_visibility_limited(current, "bridge/controller requires a smartctl device type option")
+
+        if "smart support is: unavailable" in lower or "smart support is: disabled" in lower:
+            mark_visibility_limited(current, stripped)
+
+        if "smart value unavailable" in lower or " n/a" in lower or "n/a (" in lower:
+            if any(x in lower for x in ("pending", "reallocated", "crc", "offline", "smart")):
+                mark_visibility_limited(current, "detailed SMART fields are unavailable / N/A")
 
         if "critical_warning" in lower:
             val = _parse_int(stripped.split(":")[-1])
@@ -159,7 +191,10 @@ def _collect_findings(text: str):
             if attr.lower() in lower:
                 val = _smart_attr_value(stripped)
                 if val is None:
+                    mark_visibility_limited(current, f"{attr} value unavailable")
                     continue
+
+                mark_attr(current)
 
                 if attr == "UDMA_CRC_Error_Count":
                     if val > 0:
@@ -171,6 +206,20 @@ def _collect_findings(text: str):
                         critical.append(f"{current}: {attr} = {val}")
                     else:
                         ok.append(f"{current}: {attr} = 0")
+
+    for dev in sorted(smart_passed_devices):
+        if smart_attr_seen.get(dev, 0) == 0:
+            mark_visibility_limited(
+                dev,
+                "SMART PASSED was visible, but detailed attributes were not parsed; health is only partially verified",
+            )
+
+    for dev in sorted(controller_visibility_hints):
+        if dev in smart_passed_devices and smart_attr_seen.get(dev, 0) == 0:
+            mark_visibility_limited(
+                dev,
+                "possible RAID/SAS/HBA/controller passthrough limitation",
+            )
 
     return critical, warning, ok
 
@@ -208,7 +257,7 @@ def answer_smart_health(question: str, bundle: dict | None = None) -> SmartLayer
     elif warning:
         status = "PARTIALLY VERIFIED"
         title = "✅ PARTIALLY VERIFIED"
-        direct = "SMART/NVMe evidence does not show confirmed media failure, but warnings or unverifiable devices were found."
+        direct = "SMART/NVMe evidence does not show confirmed media failure, but warnings, limited SMART visibility, or unverifiable devices were found."
     else:
         status = "VERIFIED"
         title = "✅ VERIFIED"
@@ -249,9 +298,9 @@ Collect complete host SMART/NVMe evidence before replacing disks or creating RAI
 {commands}
 
 #### Safe recommendation
-Do not call a drive fully healthy from SMART PASSED alone. Check reallocated sectors, pending sectors, offline uncorrectable sectors, CRC errors, NVMe critical warnings, media errors, unsafe shutdowns, and error log entries.
+Do not call a drive fully healthy from SMART PASSED alone. Check reallocated sectors, pending sectors, offline uncorrectable sectors, CRC errors, NVMe critical warnings, media errors, unsafe shutdowns, and error log entries. If detailed SMART attributes are N/A or missing, treat health as only partially verified. RAID, SAS/HBA, USB bridge, or controller passthrough can hide SMART detail.
 
 #### Forum-ready summary
-SMART/NVMe health should be verified from host evidence. PASSED is useful, but it is not enough by itself. Review critical attributes and NVMe error fields before deciding a disk is healthy or safe for RAID/ZFS.
+SMART/NVMe health should be verified from host evidence. PASSED is useful, but it is not enough by itself. If detailed SMART attributes are unavailable or N/A, treat the result as limited visibility, not confirmed healthy and not confirmed failed. Review critical attributes, controller passthrough, and NVMe error fields before deciding a disk is healthy or safe for RAID/ZFS.
 """,
     )
