@@ -7,9 +7,12 @@ from pathlib import Path
 import subprocess
 import re
 from datetime import datetime
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response, send_from_directory, session, redirect, abort, make_response
 from brain import render as brain_render
 from brain import answer_builder
+import os
+import secrets
+import hmac
 
 APP_NAME = "ZimaBrain CE"
 APP_SUBTITLE = "Local Zima Knowledge Assistant"
@@ -18,6 +21,171 @@ APP_VERSION = "v1.6.0-beta"
 DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
 
 app = Flask(__name__)
+
+def _load_secret_key():
+    env_key = os.environ.get("ZIMABRAIN_SECRET_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    secret_path = "/data/.zimabrain_secret_key"
+    try:
+        if os.path.exists(secret_path):
+            with open(secret_path, "r", encoding="utf-8") as f:
+                existing = f.read().strip()
+                if existing:
+                    return existing
+        generated = secrets.token_hex(32)
+        os.makedirs(os.path.dirname(secret_path), exist_ok=True)
+        with open(secret_path, "w", encoding="utf-8") as f:
+            f.write(generated)
+        try:
+            os.chmod(secret_path, 0o600)
+        except Exception:
+            pass
+        return generated
+    except Exception:
+        return "zimabrain-dev-secret-" + secrets.token_hex(16)
+
+
+app.secret_key = _load_secret_key()
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+
+ZIMABRAIN_PASSWORD = os.environ.get("ZIMABRAIN_PASSWORD", "").strip()
+
+
+def security_enabled():
+    return bool(ZIMABRAIN_PASSWORD)
+
+
+def is_logged_in():
+    if not security_enabled():
+        return True
+    return bool(session.get("zimabrain_authenticated"))
+
+
+def csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_hex(24)
+        session["csrf_token"] = token
+    return token
+
+
+def csrf_field():
+    if not security_enabled():
+        return ""
+    return f'<input type="hidden" name="csrf_token" value="{csrf_token()}">'
+
+
+def auth_status_html():
+    if not security_enabled():
+        return """
+        <div class="card">
+          <h3>Security</h3>
+          <p class="muted">Password gate is not enabled. Set <code>ZIMABRAIN_PASSWORD</code> in compose to require login.</p>
+        </div>
+        """
+    return f"""
+    <div class="card">
+      <h3>Security</h3>
+      <p class="ok">Password gate enabled.</p>
+      <form method="post" action="/logout">
+        {csrf_field()}
+        <button class="button" type="submit">Logout</button>
+      </form>
+    </div>
+    """
+
+
+def redact_support_text(text):
+    text = str(text or "")
+
+    # Redact IPv4 addresses, common token/secret/password patterns, bearer strings, and long hex keys.
+    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<LAN_IP>", text)
+    text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|authorization|bearer)\s*[:=]\s*['\"]?[^'\"\s<>]+", r"\1=<redacted>", text)
+    text = re.sub(r"(?i)bearer\s+[a-z0-9._\-]+", "Bearer <redacted>", text)
+    text = re.sub(r"\b[a-f0-9]{32,}\b", "<redacted_hex>", text)
+
+    # Keep useful context but hide deeper private paths.
+    text = re.sub(r"/DATA/AppData/[^\\s'\"<>]+", "/DATA/AppData/<redacted>", text)
+    text = re.sub(r"/media/[^\\s'\"<>]+", "/media/<redacted>", text)
+    text = re.sub(r"/var/lib/casaos_data/[^\\s'\"<>]+", "/var/lib/casaos_data/<redacted>", text)
+
+    return text
+
+
+@app.before_request
+def security_gate():
+    allowed_paths = {"/login", "/health"}
+    if request.path.startswith("/assets/") or request.path in allowed_paths:
+        return None
+
+    if security_enabled() and not is_logged_in():
+        return redirect("/login")
+
+    if security_enabled() and request.method == "POST":
+        sent = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
+        expected = session.get("csrf_token", "")
+        if not expected or not hmac.compare_digest(str(sent), str(expected)):
+            abort(400, "CSRF token missing or invalid")
+
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not security_enabled():
+        return redirect("/")
+
+    error = ""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if hmac.compare_digest(password, ZIMABRAIN_PASSWORD):
+            session["zimabrain_authenticated"] = True
+            session["csrf_token"] = secrets.token_hex(24)
+            return redirect("/")
+        error = "Incorrect password."
+
+    error_html = f"<p style='color:#fecaca;font-weight:800'>{esc(error)}</p>" if error else ""
+    return f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ZimaBrain CE Login</title>
+<style>
+body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;margin:0;padding:30px}}
+.card{{max-width:460px;margin:8vh auto;background:#101827;border:1px solid #263241;border-radius:18px;padding:28px}}
+input{{width:100%;box-sizing:border-box;padding:13px;border-radius:10px;border:1px solid #334155;background:#020617;color:#e8edf2;font-size:16px}}
+button{{width:100%;margin-top:14px;padding:12px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:900;font-size:15px;cursor:pointer}}
+.muted{{color:#9aa8b5;font-size:14px;line-height:1.55}}
+code{{background:#020617;padding:2px 6px;border-radius:6px}}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>ZimaBrain CE</h2>
+<p class="muted">Password required before showing local system diagnostics.</p>
+{error_html}
+<form method="post" action="/login">
+  <input type="password" name="password" placeholder="Password" autofocus>
+  <button type="submit">Login</button>
+</form>
+<p class="muted"><b>Forgot password?</b><br>Edit or remove <code>ZIMABRAIN_PASSWORD</code> in your compose file and restart the container.</p>
+</div>
+</body>
+</html>
+"""
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    session.clear()
+    return redirect("/login" if security_enabled() else "/")
+
 
 @app.route("/assets/<path:filename>")
 def assets(filename):
@@ -1603,11 +1771,11 @@ iframe {{
 <body>
 <div class="sidebar">
   <h2>Brain Session</h2>
-  <form method="post" action="/clear-session">
+  <form method="post" action="/clear-session">\n    {csrf_field()}
     <button style="width:100%;">Clear Brain Session</button>
   </form>
   <p><a class="button" style="width:100%; text-align:center; margin-top:10px;" href="/session-full">Open Full Session View</a></p>
-  <p><a class="button" style="width:100%; text-align:center;" href="/session-download">Download Brain Session</a></p>
+  <p><a class="button" style="width:100%; text-align:center;" href="/session-download">Download Brain Session</a></p>\n  <p><a class="button" style="width:100%; text-align:center;" href="/session-download-redacted">Download Redacted Support Report</a></p>\n  {auth_status_html()}
   <hr style="border-color:#263241;">
   {history_html}
 </div>
@@ -1621,7 +1789,7 @@ iframe {{
 
   <div class="panel">
     <h3>Ask ZimaBrain CE</h3>
-    <form method="post" action="/ask">
+    <form method="post" action="/ask">\n    {csrf_field()}
       <textarea class="question" name="question" placeholder="Paste or type a new question here..."></textarea>
       <p><button type="submit">Analyse Report</button></p>
     </form>
@@ -2216,6 +2384,17 @@ def session_download():
     )
 
 
+
+
+@app.route("/session-download-redacted")
+def session_download_redacted():
+    body = redact_support_text(build_session_export())
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        body,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename=zimabrain-session-redacted-{stamp}.md"},
+    )
 
 @app.route("/answer-download-html")
 def answer_download_html():

@@ -24,6 +24,9 @@ services:
     image: gelbuilding/zimabrain-ce:1.6.0-beta
     container_name: zimabrain-ce
     restart: unless-stopped
+    environment:
+      - ZIMABRAIN_PASSWORD=${ZIMABRAIN_PASSWORD:-}
+      - ZIMABRAIN_SECRET_KEY=${ZIMABRAIN_SECRET_KEY:-}
     privileged: true
     pid: host
     ports:

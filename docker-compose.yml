@@ -7,6 +7,9 @@ services:
       dockerfile: Dockerfile
     container_name: zimabrain-ce-flask-8601
     restart: unless-stopped
+    environment:
+      - ZIMABRAIN_PASSWORD=${ZIMABRAIN_PASSWORD:-}
+      - ZIMABRAIN_SECRET_KEY=${ZIMABRAIN_SECRET_KEY:-}
     privileged: true
     pid: host
     ports:
