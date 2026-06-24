@@ -1706,7 +1706,7 @@ iframe {{
       <span class="layer-chip-clean">Disk Health</span>
       <span class="layer-chip-clean">Disk CRC</span>
       <span class="layer-chip-clean">Filesystem Usage</span>
-      <span class="layer-chip-clean">SMART Trend Monitor</span>
+      <span class="layer-chip-clean quality">SMART / NVMe Health Layer</span>
       <span class="layer-chip-clean">Storage / Mounts</span>
       <span class="layer-chip-clean">Read-Only Storage Diagnostics</span>
       <span class="layer-chip-clean">SnapRAID / MergerFS</span>
