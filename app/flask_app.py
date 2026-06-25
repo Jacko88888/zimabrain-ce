@@ -20,7 +20,7 @@ APP_NAME = "ZimaBrain CE"
 APP_SUBTITLE = "Local Zima Knowledge Assistant"
 APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
 APP_VERSION = "v1.6.0-beta"
-DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
+DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 
 app = Flask(__name__)
@@ -542,12 +542,8 @@ def live_visual_available():
 
 def local_zimaos_visual_panel(bundle):
     if live_visual_available():
-        return f"""
+        return """
         <p class="small">Built-in native visual dashboard. No external visual container is required.</p>
-        <details>
-          <summary>Show Local ZimaOS Visual</summary>
-          <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
-        </details>
         """
 
     disks = bundle.get("disks", [])
@@ -2110,8 +2106,8 @@ def build_installed_apps_port_map_html(bundle):
 @app.route("/")
 def index():
     bundle = dashboard_bundle()
-    dashboard_url = f"http://{request.host.split(':')[0]}:8514"
-    live_visual = live_visual_available()
+    dashboard_url = ""
+    live_visual = False
     dashboard_source_value = "Native"
     dashboard_source_note = "Built-in native visual evidence from this unit"
     n = bundle["normalized"]

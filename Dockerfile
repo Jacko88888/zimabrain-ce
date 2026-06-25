@@ -9,6 +9,8 @@ RUN apt-get update \
         procps \
         util-linux \
         pciutils \
+        smartmontools \
+        nvme-cli \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt /app/requirements.txt

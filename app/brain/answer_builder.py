@@ -211,7 +211,7 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         out.append("- Dashboard evidence could not be loaded.")
         out.append("")
         out.append("#### Next safest step")
-        out.append("- Check that the dashboard source on port 8514 is running before analysing dashboard evidence.")
+        out.append("- Use the built-in native dashboard evidence before analysing dashboard questions.")
         status = _verification_status("No Evidence", out, bundle.get("report", ""))
         block = _verification_block(status, "No Evidence", "app/brain/answer_builder.py")
         final = []

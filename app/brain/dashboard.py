@@ -2,7 +2,7 @@ import urllib.request
 import subprocess
 import re
 
-DASHBOARD_REPORT_URL = "http://host.docker.internal:8514/zimabrain-report"
+DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 DASHBOARD_REPORT = ""
 DASHBOARD_STATUS = "Dashboard evidence not loaded yet."
 
