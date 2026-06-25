@@ -138,14 +138,27 @@ def auth_status_html():
 def redact_support_text(text):
     text = str(text or "")
 
+    # Network addresses
     text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<LAN_IP>", text)
-    text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|authorization|bearer)\s*[:=]\s*['\"]?[^'\"\s<>]+", r"\1=<redacted>", text)
-    text = re.sub(r"(?i)bearer\s+[a-z0-9._\-]+", "Bearer <redacted>", text)
+
+    # Authorization / bearer tokens first, before generic key=value redaction
+    text = re.sub(r"(?i)(authorization\s*[:=]\s*)bearer\s+[^\s'\"<>]+", r"\1Bearer <redacted>", text)
+    text = re.sub(r"(?i)\bbearer\s+[^\s'\"<>]+", "Bearer <redacted>", text)
+
+    # Common secret-looking key/value pairs
+    text = re.sub(
+        r"(?i)\b(password|passwd|token|secret|api[_-]?key)\s*[:=]\s*['\"]?[^'\"\s<>]+",
+        r"\1=<redacted>",
+        text,
+    )
+
+    # Long hex strings commonly used for secrets, tokens, keys or IDs
     text = re.sub(r"\b[a-f0-9]{32,}\b", "<redacted_hex>", text)
 
-    text = re.sub(r"/DATA/AppData/[^\\s'\"<>]+", "/DATA/AppData/<redacted>", text)
-    text = re.sub(r"/media/[^\\s'\"<>]+", "/media/<redacted>", text)
-    text = re.sub(r"/var/lib/casaos_data/[^\\s'\"<>]+", "/var/lib/casaos_data/<redacted>", text)
+    # Private local paths, line-safe
+    text = re.sub(r"/DATA/AppData/[^\s'\"<>]+", "/DATA/AppData/<redacted>", text)
+    text = re.sub(r"/media/[^\s'\"<>]+", "/media/<redacted>", text)
+    text = re.sub(r"/var/lib/casaos_data/[^\s'\"<>]+", "/var/lib/casaos_data/<redacted>", text)
 
     return text
 
@@ -2985,14 +2998,100 @@ pre {{
     {host_hardware_metrics_panel(bundle)}
   </details>
 
-  <div class="actions">
-    <a class="button" href="/">Back to ZimaBrain</a>
-    <a class="button" href="/answer-download">Download Current Answer MD</a>
-    <a class="button" href="/answer-download-html">Download Current Answer HTML</a>
-    <a class="button" href="/answer-download-json">Download Current Answer JSON</a>
-    <a class="button" href="/session-download-html">Download Brain Session HTML</a>
-    <a class="button" href="/session-download-json">Download Brain Session JSON</a>
-    <a class="button" href="/session-full">Open Full Session View</a>
+  <style>
+    .answer-actions-grid {{
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr 1fr;
+      gap: 14px;
+      margin: 18px 0;
+      align-items: stretch;
+    }}
+    .answer-action-group {{
+      border: 1px solid rgba(148,163,184,.20);
+      border-radius: 16px;
+      background: rgba(15,23,42,.45);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }}
+    .answer-action-title {{
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 2px;
+    }}
+    .answer-actions-grid .button {{
+      width: 100%;
+      text-align: center;
+      margin: 0;
+      box-sizing: border-box;
+      white-space: normal;
+      line-height: 1.25;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .answer-actions-grid .button-back {{
+      background: linear-gradient(135deg, #991b1b, #ef4444);
+      color: #fff;
+      font-weight: 900;
+      border: 1px solid rgba(248,113,113,.65);
+    }}
+    .answer-actions-grid .button-redacted {{
+      background: linear-gradient(135deg, #15803d, #22c55e);
+      color: #f8fafc;
+      font-weight: 900;
+      border: 1px solid rgba(34,197,94,.65);
+      box-shadow: 0 0 0 1px rgba(34,197,94,.18) inset;
+    }}
+    .answer-actions-grid .button-view {{
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      font-weight: 900;
+    }}
+    .answer-actions-grid .button:hover {{
+      filter: brightness(1.08);
+    }}
+    @media (max-width: 1100px) {{
+      .answer-actions-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+    }}
+    @media (max-width: 650px) {{
+      .answer-actions-grid {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+  </style>
+
+  <div class="answer-actions-grid">
+    <div class="answer-action-group">
+      <div class="answer-action-title">Navigation / Support</div>
+      <a class="button button-back" href="/">Back to ZimaBrain</a>
+      <a class="button button-redacted" href="/session-download-redacted">Download Redacted Support Report</a>
+    </div>
+
+    <div class="answer-action-group">
+      <div class="answer-action-title">Current Answer</div>
+      <a class="button" href="/answer-download">Download MD</a>
+      <a class="button" href="/answer-download-html">Download HTML</a>
+      <a class="button" href="/answer-download-json">Download JSON</a>
+    </div>
+
+    <div class="answer-action-group">
+      <div class="answer-action-title">Brain Session</div>
+      <a class="button" href="/session-download">Download MD</a>
+      <a class="button" href="/session-download-html">Download HTML</a>
+      <a class="button" href="/session-download-json">Download JSON</a>
+    </div>
+
+    <div class="answer-action-group">
+      <div class="answer-action-title">View</div>
+      <a class="button button-view" href="/session-full">Open Full Session View</a>
+    </div>
   </div>
 
   <div class="answer-rendered">{html_answer}</div>
