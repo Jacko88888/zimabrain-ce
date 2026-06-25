@@ -2580,6 +2580,8 @@ iframe {{
 def ask():
     question = request.form.get("question", "").strip()
     answer = answer_question(question)
+    dashboard_source_value = "Native"
+    dashboard_source_note = "Built-in native visual evidence from this unit"
 
     SESSION_HISTORY.append({
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
