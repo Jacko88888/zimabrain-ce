@@ -13,6 +13,9 @@ x-casaos:
     en_us: Local ZimaOS diagnostic assistant
   description:
     en_us: Local verifier-first diagnostic assistant for ZimaOS.
+  tips:
+    before_install:
+      en_us: ZimaBrain CE runs in Elevated Local Verifier mode. It requires host visibility and read-only Docker socket access to verify ZimaOS disks, containers, firewall state, and system evidence. Keep it private on your trusted LAN and set a password on first run.
   index: /
   scheme: http
   port_map: "8601"

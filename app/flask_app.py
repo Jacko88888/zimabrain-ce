@@ -344,6 +344,25 @@ def preferred_mount(existing, candidate):
     return candidate if candidate_score < existing_score else existing
 
 
+def native_smart_health(dev):
+    dev = str(dev or "").strip()
+    if not re.match(r"^(sd[a-z]+|nvme\d+n\d+|mmcblk\d+)$", dev):
+        return "N/A"
+
+    out = run_host_command(f"smartctl -H /dev/{dev} 2>&1 | sed -n '1,80p'", timeout=10)
+
+    if re.search(r"SMART overall-health.*PASSED", out, re.I):
+        return "PASSED"
+    if re.search(r"SMART Health Status:\s*OK", out, re.I):
+        return "PASSED"
+    if re.search(r"SMART overall-health.*FAILED|SMART Health Status:\s*FAILED", out, re.I):
+        return "FAILED"
+    if re.search(r"Unavailable|unsupported|Unknown USB bridge|Permission denied|No such device", out, re.I):
+        return "N/A"
+
+    return "N/A"
+
+
 def collect_mounts():
     mounts = {}
     proc_mounts = read_text_file("/host/proc/1/mounts") or read_text_file("/host/proc/mounts")
@@ -415,7 +434,7 @@ def collect_native_disks():
             "model": model,
             "size": size,
             "mount": mounts.get(dev, "not mounted"),
-            "health": "N/A",
+            "health": native_smart_health(dev),
             "temp": "N/A",
             "realloc": "N/A",
             "pending": "N/A",
@@ -1153,6 +1172,7 @@ def host_hardware_metrics_panel(bundle):
     system_html = (
         '<div class="hw-line"><span>host date</span><b>' + esc(str(ev.get("host_date", "") or "Not captured").strip()) + '</b></div>'
         '<div class="hw-line"><span>zfw</span><b>' + esc(zfw_status) + '</b></div>'
+        '<div class="hw-line"><span>Security mode</span><b>Elevated Local Verifier</b></div>'
         '<div class="hw-line"><span>Diagnostic access</span><b>' + esc('host mode, Docker socket read-only' if 'PidMode=host' in zbrain_security else zbrain_security[:120]) + '</b></div>'
         '<div class="hw-line"><span>prometheus</span><b>/metrics</b></div>'
     )
@@ -1681,8 +1701,9 @@ def dashboard_bundle():
     disks = parse_dashboard_disks(DASHBOARD_REPORT)
     exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
     container_count = parse_dashboard_container_count(DASHBOARD_REPORT)
-    normalized = normalize_dashboard_evidence(alerts, disks, exited)
+
     same_report_evidence = collect_same_report_evidence()
+    normalized = normalize_dashboard_evidence(alerts, disks, exited)
     critical_findings = evaluate_critical_same_report(same_report_evidence)
 
     bundle = {
@@ -2115,13 +2136,117 @@ def index():
 
     critical_items = critical.get("findings", [])
     critical_html = "".join(
-        f"<li>{'🔴' if item['level'] == 'RED' else '🟡'} <b>{esc(item['level'])}: {esc(item['title'])}</b><br><span class='small'>{esc(item['evidence'])}</span></li>"
+        f"<li>{'🔴' if item['level'] == 'RED' else '🟡'} <b>{esc(item['level'])}: {esc(item['title'])}</b>"
+        f"<br><span class='small'>Evidence: {esc(item.get('evidence', item.get('detail', '')))}</span>"
+        f"<br><span class='small'>Why: {esc(item.get('why', ''))}</span>"
+        f"<br><span class='small'>Next: {esc(item.get('next', ''))}</span>"
+        f"</li>"
         for item in critical_items[:8]
     ) or "<li>No same-report critical findings detected.</li>"
 
-    real_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["real_alerts"]) or "<li>No real alerts parsed.</li>"
-    container_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["container_alerts"]) or "<li>No container alerts parsed.</li>"
-    info_alert_html = "".join(f"<li>{esc(severity_dot(a))}</li>" for a in n["info_alerts"][:6]) or "<li>No info alerts parsed.</li>"
+    real_items = [f"<li>{esc(severity_dot(a))}</li>" for a in n["real_alerts"]]
+
+    if critical_items:
+        real_items.append(f"<li><b>Summary:</b> {len(critical_items)} verified host/system issue(s) detected.</li>")
+
+    for item in critical_items[:8]:
+        level = item.get("level", "YELLOW")
+        icon = "🔴" if level == "RED" else "🟡"
+        real_items.append(
+            f"<li>{icon} <b>{esc(level)}: {esc(item.get('title', 'Alert'))}</b>"
+            f"<br><span class='small'>Evidence: {esc(item.get('evidence', item.get('detail', '')))}</span>"
+            f"<br><span class='small'>Why: {esc(item.get('why', ''))}</span>"
+            f"<br><span class='small'>Next: {esc(item.get('next', ''))}</span>"
+            f"</li>"
+        )
+
+    real_alert_html = "".join(real_items) or "<li>No real host/storage alerts detected.</li>"
+
+    exited = n.get("exited_containers", []) or []
+    mailcow = [c for c in exited if "mailcow" in c.get("name", "").lower()]
+    other = [c for c in exited if "mailcow" not in c.get("name", "").lower()]
+
+    container_items = [f"<li>{esc(severity_dot(a))}</li>" for a in n["container_alerts"]]
+
+    if exited:
+        exited_names = []
+        for c in exited[:8]:
+            name = c.get("name", "unknown")
+            name = name.replace("mailcowdockerized-", "").replace("-mailcow-1", "")
+            exited_names.append(name)
+        more = "" if len(exited) <= 8 else f", +{len(exited) - 8} more"
+        exited_list = "".join(f"<li>{esc(x)}</li>" for x in exited_names)
+        container_items.append(
+            f"<li><b>Summary:</b> {len(exited)} exited container(s) detected"
+            f"<ul class='small' style='margin-top:6px;margin-bottom:0;'>"
+            f"{exited_list}"
+            f"</ul>"
+            f"</li>"
+        )
+
+    if mailcow:
+        names = ", ".join(c.get("name", "unknown").replace("mailcowdockerized-", "").replace("-mailcow-1", "") for c in mailcow[:8])
+        container_items.append(
+            f"<li>🟡 <b>YELLOW: Mailcow services stopped</b>"
+            f"<br><span class='small'>Stopped: {esc(names)}</span>"
+            f"<br><span class='small'>Next: Check if these Mailcow services are expected to be stopped before restarting or deleting anything.</span>"
+            f"</li>"
+        )
+
+    if other:
+        names = ", ".join(c.get("name", "unknown") for c in other[:8])
+        container_items.append(
+            f"<li>🟡 <b>YELLOW: Other exited containers</b>"
+            f"<br><span class='small'>Stopped: {esc(names)}</span>"
+            f"</li>"
+        )
+
+    container_alert_html = "".join(container_items) or "<li>No container/service alerts detected.</li>"
+
+    info_items = [f"<li>{esc(severity_dot(a))}</li>" for a in n["info_alerts"][:6]]
+
+    disk_ok_count = len(n.get("disk_ok", []) or [])
+    disk_attention = n.get("disk_attention", []) or []
+
+    confirmed_disk_attention = []
+    unavailable_disk_info = []
+
+    for d in disk_attention:
+        issues = d.get("issues", []) or []
+        if any("N/A" in str(x) for x in issues):
+            unavailable_disk_info.append(d)
+        else:
+            confirmed_disk_attention.append(d)
+
+    total_disks = disk_ok_count + len(disk_attention)
+
+    for d in confirmed_disk_attention:
+        real_items.append(
+            f"<li>🟡 <b>YELLOW: Disk/storage issue detected</b>"
+            f"<br><span class='small'>Device: {esc(d.get('device', 'unknown'))}</span>"
+            f"<br><span class='small'>Mount: {esc(d.get('mount', 'unknown'))}</span>"
+            f"<br><span class='small'>Issue: {esc(', '.join(d.get('issues', [])))}</span>"
+            f"</li>"
+        )
+
+    for d in unavailable_disk_info[:8]:
+        info_items.append(
+            f"<li>ℹ️ <b>INFO: Disk health value unavailable</b>"
+            f"<br><span class='small'>Device: {esc(d.get('device', 'unknown'))}</span>"
+            f"<br><span class='small'>Mount: {esc(d.get('mount', 'unknown'))}</span>"
+            f"<br><span class='small'>Meaning: SMART value unavailable, not confirmed disk failure.</span>"
+            f"</li>"
+        )
+
+    info_items.append(
+        f"<li>ℹ️ <b>INFO: Native evidence check completed</b>"
+        f"<br><span class='small'>Dashboard source: built-in native local evidence.</span>"
+        f"<br><span class='small'>Disks checked: {total_disks} total, {len(confirmed_disk_attention)} confirmed disk/storage issue(s), {len(unavailable_disk_info)} unavailable value(s).</span>"
+        f"<br><span class='small'>Exited containers detected: {len(exited)}.</span>"
+        f"</li>"
+    )
+
+    info_alert_html = "".join(info_items) or "<li>No info alerts parsed.</li>"
 
     host_ev = bundle.get("same_report_evidence", {})
     host_os_raw = host_ev.get("host_os", "")
@@ -2402,9 +2527,9 @@ iframe {{
 
   <div class="cards">
     <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">{esc(dashboard_source_value)}</div><div class="small">{esc(dashboard_source_note)}</div></div>
-    <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
-    <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
-    <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
+    <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n.get('real_alerts', [])) + len(bundle.get('critical_findings', []))}</div><div class="small">Verified host/storage priority</div></div>
+    <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n.get('container_alerts', [])) + len(n.get('exited_containers', []))}</div><div class="small">Exited services</div></div>
+    <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n.get('info_alerts', [])) + len(n.get('disk_attention', []))}</div><div class="small">Unsupported/N/A metrics</div></div>
   </div>
 
   <div class="panel">
@@ -2419,6 +2544,7 @@ iframe {{
       <span class="chip">RAUC: {esc(host_rauc)}</span>
       <span class="chip">Evidence refreshed: {esc(host_date)}</span>
       <span class="chip">Docker Health: {esc(self_health)}</span>
+      <span class="chip">Security mode: Elevated Local Verifier</span>
       <span class="chip">Render module: active</span>
       <span class="chip">Router module: active</span>
       <span class="chip">Answer builder: active</span>
@@ -2452,6 +2578,7 @@ iframe {{
       <span class="layer-chip-clean">Intent Brain Router</span>
       <span class="layer-chip-clean">Verified Answer Builder</span>
       <span class="layer-chip-clean">Brain Session / Review</span>
+      <span class="layer-chip-clean">Forum Issue Intake</span>
       <span class="layer-chip-clean manual">Official Manual Knowledge Engine</span>
       <span class="layer-chip-clean manual">App Verified Install Guides</span>
       <span class="layer-chip-clean manual">Third-Party App Store Index</span>
@@ -2467,6 +2594,9 @@ iframe {{
       <span class="layer-chip-clean">Container State</span>
       <span class="layer-chip-clean quality">Container Running Count</span>
       <span class="layer-chip-clean">Report Comparison</span>
+      <span class="layer-chip-clean">Trend Alerts</span>
+      <span class="layer-chip-clean">Trend History</span>
+      <span class="layer-chip-clean">Host Hardware Metrics</span>
       <span class="layer-chip-clean">Log Intake / Uploaded Evidence</span>
       <span class="layer-chip-clean">Final Recommendation / Repair Planner</span>
     </div>
@@ -2480,6 +2610,7 @@ iframe {{
       <span class="layer-chip-clean">Disk CRC</span>
       <span class="layer-chip-clean">Filesystem Usage</span>
       <span class="layer-chip-clean quality">SMART / NVMe Health Layer</span>
+      <span class="layer-chip-clean">SMART Trend</span>
       <span class="layer-chip-clean">Storage / Mounts</span>
       <span class="layer-chip-clean">Read-Only Storage Diagnostics</span>
       <span class="layer-chip-clean">SnapRAID / MergerFS</span>
@@ -2547,11 +2678,11 @@ iframe {{
   </details>
 
 
-  <div class="panel">
-    <h3>Local ZimaOS Visual Dashboard</h3>
+  <details class="panel visual-dashboard-panel">
+    <summary><span class="visual-dashboard-arrow">&#9656;</span> Show Local ZimaOS Visual Dashboard</summary>
     {local_zimaos_visual_panel(bundle)}
     {host_hardware_metrics_panel(bundle)}
-  </div>
+  </details>
 
   <script>
   document.querySelectorAll(".visual-dashboard-panel").forEach(function(panel) {{
@@ -2841,18 +2972,18 @@ pre {{
 
     <div class="cards">
       <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">{esc(dashboard_source_value)}</div><div class="small">{esc(dashboard_source_note)}</div></div>
-      <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
-      <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
-      <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
+      <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n.get('real_alerts', [])) + len(bundle.get('critical_findings', []))}</div><div class="small">Verified host/storage priority</div></div>
+      <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n.get('container_alerts', [])) + len(n.get('exited_containers', []))}</div><div class="small">Exited services</div></div>
+      <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n.get('info_alerts', [])) + len(n.get('disk_attention', []))}</div><div class="small">Unsupported/N/A metrics</div></div>
     </div>
   </div>
 
-  <div class="answer-dashboard-panel">
-    <h3>Local ZimaOS Visual Dashboard</h3>
+  <details class="answer-dashboard-panel visual-dashboard-panel">
+    <summary><span class="visual-dashboard-arrow">&#9656;</span> Show Local ZimaOS Visual Dashboard</summary>
     <div class="small">Built-in native visual dashboard. No external visual container is required.</div>
     {local_zimaos_visual_panel(bundle)}
     {host_hardware_metrics_panel(bundle)}
-  </div>
+  </details>
 
   <div class="actions">
     <a class="button" href="/">Back to ZimaBrain</a>
