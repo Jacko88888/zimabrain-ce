@@ -205,6 +205,8 @@ input{{width:100%;box-sizing:border-box;padding:13px;margin-top:10px;border-radi
 button{{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:900;font-size:15px;cursor:pointer}}
 .muted{{color:#9aa8b5;font-size:14px;line-height:1.55}}
 code{{background:#020617;padding:2px 6px;border-radius:6px}}
+
+
 </style>
 </head>
 <body>
@@ -533,18 +535,15 @@ def build_native_report(reason=""):
 
 
 def live_visual_available():
-    try:
-        host = request.host.split(":")[0]
-        urllib.request.urlopen(f"http://{host}:8514", timeout=1).close()
-        return True
-    except Exception:
-        return False
+    # Disabled for release polish.
+    # ZimaBrain CE now uses its built-in native visual dashboard.
+    return False
 
 
 def local_zimaos_visual_panel(bundle):
     if live_visual_available():
         return f"""
-        <p class="small">Live visual layer detected. If it does not load, the native fallback evidence is still used above.</p>
+        <p class="small">Built-in native visual dashboard. No external visual container is required.</p>
         <details>
           <summary>Show Local ZimaOS Visual</summary>
           <iframe src="//{request.host.split(':')[0]}:8514"></iframe>
@@ -594,9 +593,9 @@ def local_zimaos_visual_panel(bundle):
     if not container_html:
         container_html = '<div class="native-muted">No Docker containers parsed yet.</div>'
 
-    status_line = "Native fallback active"
+    status_line = "Built-in native visual active. External visual dashboard is not required."
     if "Native ZimaBrain local evidence fallback generated" in report:
-        status_line = "Native fallback active because live dashboard is not available"
+        status_line = "Built-in native visual active. External visual dashboard is not required."
 
     return f"""
     <style>
@@ -742,7 +741,7 @@ def local_zimaos_visual_panel(bundle):
 
       <div class="native-bottom">
         <div class="native-containers">
-          <h4>Docker State</h4>
+          <h4>Container State</h4>
           {container_html}
         </div>
         <div class="native-containers">
@@ -750,7 +749,7 @@ def local_zimaos_visual_panel(bundle):
           <div class="native-line"><span class="native-dot"></span><span>Host sysfs</span><b>active</b></div>
           <div class="native-line"><span class="native-dot"></span><span>Host mounts</span><b>active</b></div>
           <div class="native-line"><span class="native-dot"></span><span>Docker socket</span><b>active</b></div>
-          <div class="native-line"><span class="native-dot"></span><span>External dashboard</span><b>not required</b></div>
+          <div class="native-line"><span class="native-dot"></span><span>External visual dashboard</span><b>not required</b></div>
         </div>
       </div>
     </div>
@@ -767,7 +766,7 @@ def fetch_dashboard_report():
         with urllib.request.urlopen(req, timeout=3) as resp:
             report = resp.read().decode("utf-8", errors="replace")
 
-        # External dashboard report may contain container alerts but not
+        # External visual dashboard report may contain container alerts but not
         # the native running/total Docker container count.
         # Append native local evidence so answer layers can verify X/Y running.
         if "Containers:" not in report or "Containers not running:" not in report:
@@ -978,6 +977,305 @@ def run_host_command(command, timeout=12):
         return e.output.strip()
     except Exception as e:
         return f"ERROR: {e}"
+
+
+
+
+def host_hardware_metrics_panel(bundle):
+    ev = (bundle.get("same_report_evidence") or {})
+    trend = bundle.get("trend_snapshot") or {}
+    n = bundle.get("normalized") or {}
+
+    def lscpu_value(key):
+        for line in str(ev.get("cpu_info", "") or "").splitlines():
+            if line.lower().startswith(key.lower() + ":"):
+                return line.split(":", 1)[1].strip()
+        return "Not captured"
+
+    def trend_int(key):
+        try:
+            return int(trend.get(key, 0) or 0)
+        except Exception:
+            return 0
+
+    def os_value(key):
+        for line in str(ev.get("host_os", "") or "").splitlines():
+            if line.startswith(key + "="):
+                return line.split("=", 1)[1].strip().strip('"')
+        return "Not captured"
+
+    def count_lsblk(kind):
+        names = set()
+        for line in str(ev.get("lsblk", "") or "").splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+
+            name = parts[0].strip().replace("├─", "").replace("└─", "").replace("│", "")
+            name = name.strip()
+
+            if kind == "nvme":
+                if re.match(r"^nvme[0-9]+n[0-9]+$", name):
+                    names.add(name)
+            elif kind == "sd":
+                if re.match(r"^sd[a-z]$", name):
+                    names.add(name)
+
+        return len(names)
+
+    cpu_model = lscpu_value("Model name").replace("(R)", "").replace("(TM)", "")
+    cpu_model = re.sub(r"\s+", " ", cpu_model).strip()
+
+    cpu_usage = "Not captured"
+    m = re.search(r"CPU_USAGE_PERCENT=([0-9.]+|unknown)", str(ev.get("cpu_usage", "") or ""))
+    if m:
+        cpu_usage = m.group(1) + "%"
+
+    mem_value = "Not captured"
+    mem_note = "host memory"
+    swap_value = "Not captured"
+
+    for line in str(ev.get("memory", "") or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 7 and parts[0] == "Mem:":
+            total = int(parts[1])
+            used = int(parts[2])
+            avail = int(parts[6])
+            pct = (used / total * 100) if total else 0
+            mem_value = f"{pct:.0f}%"
+            mem_note = f"{used/1024:.1f} GiB / {total/1024:.1f} GiB - {avail/1024:.1f} GiB avail"
+        if len(parts) >= 4 and parts[0] == "Swap:":
+            total = int(parts[1])
+            used = int(parts[2])
+            pct = (used / total * 100) if total else 0
+            swap_value = f"{used/1024:.1f} GiB / {total/1024:.1f} GiB - {pct:.0f}%"
+
+    load = "Not captured"
+    lp = str(ev.get("loadavg", "") or "").split()
+    if len(lp) >= 3:
+        load = f"{lp[0]} / {lp[1]} / {lp[2]}"
+
+    temp_values = []
+    thermal_lines = []
+    for src in [ev.get("thermal_zones", ""), ev.get("sensors", "")]:
+        for line in str(src or "").splitlines():
+            original = line.strip()
+            if not original:
+                continue
+            line2 = original.split("(", 1)[0] if any(x in original.lower() for x in ["high =", "crit =", "low ="]) else original
+            found = False
+            for mm in re.finditer(r"([+-]?[0-9]+(?:\.[0-9]+)?)\s*°?C", line2):
+                try:
+                    v = float(mm.group(1))
+                    if -20 <= v <= 150:
+                        temp_values.append(v)
+                        found = True
+                except Exception:
+                    pass
+            if found and len(thermal_lines) < 8:
+                thermal_lines.append(line2.strip())
+
+    max_temp = f"{max(temp_values):.1f}C" if temp_values else "Not captured"
+
+    lan_ip = "unknown"
+    for line in str(ev.get("port_reachability", "") or "").splitlines():
+        if line.startswith("HOST_LAN_IP="):
+            lan_ip = line.split("=", 1)[1].strip() or "unknown"
+            break
+
+    docker_lines = [x for x in str(ev.get("docker_ps", "") or "").splitlines() if x.strip()]
+    running_containers = trend_int("running_containers") or len(docker_lines)
+    published_ports = trend_int("published_ports")
+    lan_reachable = trend_int("lan_reachable_ports")
+    localhost_only = trend_int("localhost_only_ports")
+    possible_blocked = trend_int("possible_blocked_ports")
+
+    real_alerts = len(n.get("real_alerts", []) or [])
+    container_alerts = len(n.get("container_alerts", []) or [])
+
+    smart_markers = trend_int("smart_warning_markers")
+    nvme_markers = trend_int("nvme_warning_markers")
+
+    zfw_status = str(ev.get("zfw_status", "") or "not captured").strip()
+    zbrain_security = str(ev.get("self_docker_security", "") or "not captured").strip()
+    zbrain_security = re.sub(r"\s+", " ", zbrain_security)
+
+    tiles = [
+        ("CPU", cpu_model, "verified host CPU model"),
+        ("CPU USE", cpu_usage, "1 second live sample"),
+        ("CORES", lscpu_value("Core(s) per socket"), f"{lscpu_value('CPU(s)')} logical CPUs"),
+        ("MEM", mem_value, mem_note),
+        ("SWAP", swap_value, "host swap usage"),
+        ("LOAD", load, "1 / 5 / 15 minute load"),
+        ("TEMP", max_temp, "highest live sensor reading"),
+        ("UPTIME", str(ev.get("uptime", "") or "Not captured").strip(), "host uptime"),
+        ("OS", os_value("PRETTY_NAME"), "host operating system"),
+        ("KERNEL", str(ev.get("kernel", "") or "Not captured").strip(), "running kernel"),
+        ("SATA / USB", str(count_lsblk("sd")), "physical SATA/USB drives detected"),
+        ("NVMe Drives", str(count_lsblk("nvme")), "physical NVMe drives detected"),
+        ("Containers", str(running_containers), "running containers"),
+        ("Published Ports", str(published_ports), "container ports published to host"),
+        ("Open on LAN", str(lan_reachable), f"reachable on LAN IP {lan_ip}"),
+        ("Local Only", str(localhost_only), "ports only reachable from this host"),
+        ("Blocked or Hidden", str(possible_blocked), "possible firewall, ZFW, VLAN, or bind blocks"),
+        ("Dashboard Alerts", str(real_alerts + container_alerts), f"{real_alerts} hardware/storage / {container_alerts} container"),
+        ("Storage Review", str(smart_markers), "SMART items to review, not a failure count"),
+        ("NVMe Review", str(nvme_markers), "NVMe items to review, not a failure count"),
+        ("Firewall", zfw_status, "ZFW firewall service status"),
+    ]
+
+    tile_html = ""
+    for title, value, note in tiles:
+        tile_html += (
+            '<div class="hw-tile">'
+            '<div class="hw-title">' + esc(title) + '</div>'
+            '<div class="hw-value">' + esc(value) + '</div>'
+            '<div class="hw-note">' + esc(note) + '</div>'
+            '</div>'
+        )
+
+    thermal_html = ""
+    if thermal_lines:
+        for line in thermal_lines[:8]:
+            clean = str(line).strip()
+            label = "sensor"
+            reading = clean
+
+            m = re.match(r"^([A-Za-z0-9_ .:#/-]+?)\s+([+-]?[0-9]+(?:\.[0-9]+)?\s*°?C)$", clean)
+            if m:
+                label = m.group(1).strip().rstrip(":")
+                reading = m.group(2).strip()
+            elif ":" in clean:
+                left, right = clean.split(":", 1)
+                label = left.strip()
+                reading = right.strip()
+
+            thermal_html += '<div class="hw-line"><span>' + esc(label) + '</span><b>' + esc(reading) + '</b></div>'
+    else:
+        thermal_html = '<div class="hw-line"><span>sensor</span><b>Not captured</b></div>'
+
+    system_html = (
+        '<div class="hw-line"><span>host date</span><b>' + esc(str(ev.get("host_date", "") or "Not captured").strip()) + '</b></div>'
+        '<div class="hw-line"><span>zfw</span><b>' + esc(zfw_status) + '</b></div>'
+        '<div class="hw-line"><span>Diagnostic access</span><b>' + esc('host mode, Docker socket read-only' if 'PidMode=host' in zbrain_security else zbrain_security[:120]) + '</b></div>'
+        '<div class="hw-line"><span>prometheus</span><b>/metrics</b></div>'
+    )
+
+    style_html = """
+<style>
+.host-hw-panel .hw-cockpit {
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(120,255,170,.24);
+  background:
+    linear-gradient(rgba(110,255,170,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110,255,170,.035) 1px, transparent 1px),
+    radial-gradient(circle at top left, rgba(120,255,170,.11), transparent 36%),
+    #050908;
+  background-size:28px 28px, 28px 28px, auto, auto;
+  box-shadow:inset 0 0 34px rgba(90,255,150,.07);
+  border-radius:12px;
+}
+.host-hw-panel .hw-topline {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:#8dffb2;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:11px;
+  letter-spacing:3px;
+  margin-bottom:14px;
+}
+.host-hw-panel .hw-dot {
+  width:7px;
+  height:7px;
+  background:#9cffb3;
+  box-shadow:0 0 10px rgba(156,255,179,.75);
+  display:inline-block;
+}
+.host-hw-panel .hw-grid {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+}
+.host-hw-panel .hw-tile {
+  min-height:92px;
+  padding:13px;
+  border:1px solid rgba(120,255,170,.18);
+  background:rgba(4,12,10,.78);
+  box-shadow:inset 0 0 18px rgba(100,255,170,.035);
+}
+.host-hw-panel .hw-title {
+  color:#7cff9d;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:2px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.host-hw-panel .hw-value {
+  color:#eafff0;
+  font-size:22px;
+  line-height:1.15;
+  font-weight:900;
+  margin-top:12px;
+  word-break:break-word;
+}
+.host-hw-panel .hw-note {
+  color:#9db5aa;
+  font-size:12px;
+  margin-top:7px;
+}
+.host-hw-panel .hw-section-title {
+  margin-top:16px;
+  padding-top:12px;
+  border-top:1px solid rgba(120,255,170,.16);
+  color:#7cff9d;
+  font-size:11px;
+  letter-spacing:3px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight:900;
+}
+.host-hw-panel .hw-lines {
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px 12px;
+}
+.host-hw-panel .hw-line {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  border-bottom:1px solid rgba(120,255,170,.10);
+  padding:6px 0;
+  color:#9db5aa;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:12px;
+}
+.host-hw-panel .hw-line b {
+  color:#eafff0;
+  font-weight:800;
+  text-align:right;
+}
+@media (max-width:900px) {
+  .host-hw-panel .hw-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .host-hw-panel .hw-lines { grid-template-columns:1fr; }
+}
+</style>
+"""
+
+    return (
+        style_html + '<details class="visual-dashboard-panel host-hw-panel">'
+        '<summary><span class="visual-dashboard-arrow">&#9656;</span> Show local system metrics cockpit</summary>'
+        '<div class="hw-cockpit">'
+        '<div class="hw-topline"><span class="hw-dot"></span><span>LOCAL SYSTEM METRICS COCKPIT - VERIFIED EVIDENCE</span></div>'
+        '<div class="hw-grid">' + tile_html + '</div>'
+        '<div class="hw-section-title">THERMAL EVIDENCE</div>'
+        '<div class="hw-lines">' + thermal_html + '</div>'
+        '<div class="hw-section-title">SYSTEM / SECURITY / MONITORING</div>'
+        '<div class="hw-lines">' + system_html + '</div>'
+        '</div>'
+        '</details>'
+    )
 
 
 def collect_same_report_evidence():
@@ -1814,8 +2112,8 @@ def index():
     bundle = dashboard_bundle()
     dashboard_url = f"http://{request.host.split(':')[0]}:8514"
     live_visual = live_visual_available()
-    dashboard_source_value = "8514" if live_visual else "Native"
-    dashboard_source_note = "Live visual dashboard detected" if live_visual else "Native host evidence from this unit"
+    dashboard_source_value = "Native"
+    dashboard_source_note = "Built-in native visual evidence from this unit"
     n = bundle["normalized"]
     critical = collect_critical_verifier()
 
@@ -2256,6 +2554,7 @@ iframe {{
   <div class="panel">
     <h3>Local ZimaOS Visual Dashboard</h3>
     {local_zimaos_visual_panel(bundle)}
+    {host_hardware_metrics_panel(bundle)}
   </div>
 
   <script>
@@ -2543,7 +2842,7 @@ pre {{
     <div class="rule">Analyze first → Verifier second → Explainer third → Repair guide last</div>
 
     <div class="cards">
-      <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">8514</div><div class="small">{esc(bundle['status'])}</div></div>
+      <div class="card"><div class="card-title">Dashboard Source</div><div class="card-value">{esc(dashboard_source_value)}</div><div class="small">{esc(dashboard_source_note)}</div></div>
       <div class="card"><div class="card-title">Real Alerts</div><div class="card-value">{len(n['real_alerts'])}</div><div class="small">Hardware/storage priority</div></div>
       <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len(n['container_alerts'])}</div><div class="small">Exited services</div></div>
       <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n['info_alerts'])}</div><div class="small">Unsupported/N/A metrics</div></div>
@@ -2552,8 +2851,9 @@ pre {{
 
   <div class="answer-dashboard-panel">
     <h3>Local ZimaOS Visual Dashboard</h3>
-    <div class="small">Live visual if available. Native fallback is used automatically on boards without the dashboard container.</div>
+    <div class="small">Built-in native visual dashboard. No external visual container is required.</div>
     {local_zimaos_visual_panel(bundle)}
+    {host_hardware_metrics_panel(bundle)}
   </div>
 
   <div class="actions">
