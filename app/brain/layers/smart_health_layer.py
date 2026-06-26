@@ -70,7 +70,7 @@ def _get_text(bundle: dict) -> str:
     if not isinstance(bundle, dict):
         return ""
 
-    for key in ("raw_report", "report_text", "dashboard_report"):
+    for key in ("raw_report", "report_text", "dashboard_report", "report"):
         parts.append(str(bundle.get(key, "") or ""))
 
     evidence = bundle.get("same_report_evidence", {}) or {}
@@ -186,7 +186,10 @@ def _collect_findings(text: str):
             "Reallocated_Sector_Ct",
             "Current_Pending_Sector",
             "Offline_Uncorrectable",
+            "Reported_Uncorrect",
             "UDMA_CRC_Error_Count",
+            "CRC_Error_Count",
+            "Command_Timeout",
         ):
             if attr.lower() in lower:
                 val = _smart_attr_value(stripped)
@@ -196,7 +199,7 @@ def _collect_findings(text: str):
 
                 mark_attr(current)
 
-                if attr == "UDMA_CRC_Error_Count":
+                if attr in ("UDMA_CRC_Error_Count", "CRC_Error_Count", "Command_Timeout"):
                     if val > 0:
                         warning.append(f"{current}: {attr} = {val}")
                     else:
@@ -239,6 +242,85 @@ def _bullets(items):
     return "\n".join(f"- {x}" for x in deduped[:30])
 
 
+def _question_devices(question):
+    q = str(question or "").lower()
+    found = []
+
+    for m in re.findall(r"/dev/(sd[a-z]+|nvme\d+n\d+|mmcblk\d+)", q):
+        dev = f"/dev/{m}"
+        if dev not in found:
+            found.append(dev)
+
+    for m in re.findall(r"\b(sd[a-z]+|nvme\d+n\d+|mmcblk\d+)\b", q):
+        dev = f"/dev/{m}"
+        if dev not in found:
+            found.append(dev)
+
+    return found
+
+
+def _device_items(items, dev):
+    dev = str(dev or "")
+    bare = dev.replace("/dev/", "")
+    prefixes = (f"{dev}:", f"{bare}:")
+    return [x for x in items if str(x).startswith(prefixes)]
+
+
+def _specific_disk_focus(question, critical, warning, ok):
+    devices = _question_devices(question)
+    if not devices:
+        return ""
+
+    lines = []
+    target_set = set(devices) | {d.replace("/dev/", "") for d in devices}
+
+    for dev in devices:
+        dev_critical = _device_items(critical, dev)
+        dev_warning = _device_items(warning, dev)
+        dev_ok = _device_items(ok, dev)
+        crc_items = [x for x in dev_critical + dev_warning + dev_ok if "crc" in x.lower()]
+
+        lines.append(f"#### Specific disk focus: {dev}")
+
+        if crc_items:
+            zero_crc = [x for x in crc_items if re.search(r"=\s*0\b", x)]
+            nonzero_crc = [x for x in crc_items if not re.search(r"=\s*0\b", x)]
+            if nonzero_crc:
+                lines.append("- CRC evidence was found for the disk mentioned in the question:")
+                lines.extend(f"  - {x}" for x in nonzero_crc)
+            elif zero_crc:
+                lines.append(f"- No CRC errors are shown on {dev} in the collected evidence.")
+                lines.extend(f"  - {x}" for x in zero_crc)
+        else:
+            lines.append(f"- No CRC counter evidence was parsed for {dev} in the current report.")
+
+        if dev_critical:
+            lines.append("- Critical SMART attributes for the disk mentioned in the question:")
+            lines.extend(f"  - {x}" for x in dev_critical)
+        elif dev_warning:
+            lines.append("- Warning SMART attributes for the disk mentioned in the question:")
+            lines.extend(f"  - {x}" for x in dev_warning)
+        else:
+            lines.append(f"- No critical SMART media-failure indicators were parsed for {dev}.")
+
+        lines.append("")
+
+    other_critical = []
+    for x in critical:
+        name = str(x).split(":", 1)[0]
+        if name not in target_set and name.replace("/dev/", "") not in target_set:
+            other_critical.append(x)
+
+    if other_critical:
+        lines.append("#### Other disk risks found separately")
+        lines.append("- The disk named in the question is not the only item checked.")
+        lines.append("- Other disks with higher-risk SMART attributes:")
+        lines.extend(f"  - {x}" for x in other_critical[:12])
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
 def answer_smart_health(question: str, bundle: dict | None = None) -> SmartLayerResult:
     if not is_smart_question(question):
         return SmartLayerResult(matched=False)
@@ -263,6 +345,8 @@ def answer_smart_health(question: str, bundle: dict | None = None) -> SmartLayer
         title = "✅ VERIFIED"
         direct = "SMART/NVMe evidence did not show obvious disk failure indicators in the parsed fields."
 
+    specific_focus = _specific_disk_focus(question, critical, warning, ok)
+
     commands = (
         f"{CODE_FENCE}bash\n"
         "for d in /dev/sda /dev/sdb /dev/sdc /dev/sdd; do echo \"===== SMART $d =====\"; smartctl -H -A \"$d\" 2>&1 | sed -n '1,140p'; done\n"
@@ -283,7 +367,7 @@ def answer_smart_health(question: str, bundle: dict | None = None) -> SmartLayer
 #### Direct answer / severity
 {direct}
 
-#### Critical findings
+{specific_focus + chr(10) + chr(10) if specific_focus else ""}#### Critical findings
 {_bullets(critical)}
 
 #### Warnings / context

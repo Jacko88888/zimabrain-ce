@@ -362,16 +362,89 @@ def native_smart_health(dev):
     if not re.match(r"^(sd[a-z]+|nvme\d+n\d+|mmcblk\d+)$", dev):
         return "N/A"
 
-    out = run_host_command(f"smartctl -H /dev/{dev} 2>&1 | sed -n '1,80p'", timeout=10)
+    out = run_host_command(f"smartctl -H -A /dev/{dev} 2>&1 | sed -n '1,180p'", timeout=15)
+    lower = out.lower()
 
-    if re.search(r"SMART overall-health.*PASSED", out, re.I):
-        return "PASSED"
-    if re.search(r"SMART Health Status:\s*OK", out, re.I):
-        return "PASSED"
-    if re.search(r"SMART overall-health.*FAILED|SMART Health Status:\s*FAILED", out, re.I):
-        return "FAILED"
-    if re.search(r"Unavailable|unsupported|Unknown USB bridge|Permission denied|No such device", out, re.I):
+    if re.search(r"Permission denied|No such device", out, re.I):
         return "N/A"
+
+    if re.search(r"Unavailable|unsupported|Unknown USB bridge|please specify device type|SMART support is:\s*(unavailable|disabled)", out, re.I):
+        return "LIMITED; SMART details unavailable"
+
+    overall = "UNKNOWN"
+    if re.search(r"SMART overall-health.*FAILED|SMART Health Status:\s*FAILED", out, re.I):
+        overall = "FAILED"
+    elif re.search(r"SMART overall-health.*PASSED|SMART Health Status:\s*OK", out, re.I):
+        overall = "PASSED"
+
+    def last_int(line):
+        nums = re.findall(r"\b\d+\b", str(line or ""))
+        if not nums:
+            return None
+        try:
+            return int(nums[-1])
+        except Exception:
+            return None
+
+    risky_attrs = {
+        "Reallocated_Sector_Ct": "Reallocated sectors",
+        "Current_Pending_Sector": "Pending sectors",
+        "Offline_Uncorrectable": "Offline uncorrectable",
+        "Reported_Uncorrect": "Reported uncorrectable",
+    }
+
+    attention_attrs = {
+        "UDMA_CRC_Error_Count": "UDMA CRC errors",
+        "CRC_Error_Count": "CRC errors",
+        "Command_Timeout": "Command timeouts",
+    }
+
+    seen_detail = False
+    critical_details = []
+    attention_details = []
+
+    for line in out.splitlines():
+        for attr, label in risky_attrs.items():
+            if attr.lower() in line.lower():
+                seen_detail = True
+                val = last_int(line)
+                if val is not None and val > 0:
+                    critical_details.append(f"{label}: {val}")
+
+        for attr, label in attention_attrs.items():
+            if attr.lower() in line.lower():
+                seen_detail = True
+                val = last_int(line)
+                if val is not None and val > 0:
+                    attention_details.append(f"{label}: {val}")
+
+        if "unsafe_shutdowns" in line.lower() or "unsafe shutdowns" in line.lower():
+            seen_detail = True
+            val = last_int(line)
+            if val is not None and val >= 10:
+                attention_details.append(f"NVMe unsafe shutdowns: {val}")
+
+        if "num_err_log_entries" in line.lower() or "error information log entries" in line.lower():
+            seen_detail = True
+            val = last_int(line)
+            if val is not None and val > 0:
+                attention_details.append(f"NVMe error log entries: {val}")
+
+    if overall == "FAILED":
+        details = critical_details + attention_details
+        suffix = "; ".join(details[:4]) if details else "SMART overall: FAILED"
+        return f"FAILED; {suffix}"
+
+    if critical_details or attention_details:
+        details = critical_details + attention_details
+        suffix = "; ".join(details[:4])
+        return f"ATTENTION; {suffix}; SMART overall: {overall}"
+
+    if overall == "PASSED" and seen_detail:
+        return "PASSED"
+
+    if overall in ("PASSED", "FAILED"):
+        return f"LIMITED; SMART overall: {overall}; detailed attributes missing"
 
     return "N/A"
 
