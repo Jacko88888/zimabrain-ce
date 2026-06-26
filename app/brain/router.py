@@ -2,6 +2,11 @@ from pathlib import Path
 import json
 import re
 
+try:
+    from brain.app_aliases import alias_tokens
+except Exception:
+    from app.brain.app_aliases import alias_tokens
+
 
 ALL_FLAGS = [
     "dashboard_alert_question",
@@ -45,11 +50,7 @@ ALL_FLAGS = [
 ]
 
 
-APP_WORDS = {
-    "immich", "jellyfin", "qbittorrent", "nextcloud", "radarr", "sonarr",
-    "sabnzbd", "tailscale", "adguard", "ollama", "openwebui", "open-webui",
-    "cloudflare", "cloudflared"
-}
+APP_WORDS = alias_tokens()
 
 DISK_WORDS = {"disk", "disks", "drive", "drives", "hdd", "ssd", "nvme", "storage", "capacity"}
 MOUNT_WORDS = {"mount", "mounted", "mounts", "media", "path", "paths", "folder", "location", ".media"}
@@ -270,6 +271,19 @@ def classify(question):
         or (("qbit" in qt or "qbittorrent" in qt) and ("stuck" in qt or "download" in qt or "downloading" in qt))
     ):
         _score(candidates, "app_runtime_diag_question", 25.0, ["gate:natural-app-problem", "entity:app-runtime"])
+
+    # Plain-English app open / tile / reachability wording.
+    # Examples: "why plex not open", "jellyfin not opening", "cannot open immich",
+    # "home assistant unreachable", "app tile not opening", "service not reachable".
+    app_open_words = {"open", "opening", "load", "loading", "reachable", "unreachable", "access", "connect", "connecting"}
+    # Route named apps and app/tile wording to app runtime.
+    # Generic "service not reachable" without an app name should stay network/firewall.
+    app_subject = has_app or {"app", "apps", "tile", "tiles"} & qt
+    app_problem = has_issue or bool(app_open_words & qt) or {"down", "offline"} & qt
+
+    if app_subject and app_problem:
+        _score(candidates, "app_runtime_diag_question", 220.0, ["gate:natural-app-open", "entity:app-runtime"])
+        _score(candidates, "network_exposure_question", 150.0, ["gate:natural-app-open-secondary", "entity:network-reachability"])
 
     # Permission wording must beat general SMB share route.
     if ("permission" in qt or "permissions" in qt or "denied" in qt) and ("smb" in qt or "samba" in qt or "share" in qt or "windows" in qt):

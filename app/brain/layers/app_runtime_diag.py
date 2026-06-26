@@ -1,12 +1,7 @@
-APP_ALIASES = {
-    "jellyfin": ["jellyfin"],
-    "immich": ["immich"],
-    "qbittorrent": ["qbittorrent", "qbit", "qbitt"],
-    "radarr": ["radarr"],
-    "sonarr": ["sonarr"],
-    "sabnzbd": ["sabnzbd", "sab"],
-    "nextcloud": ["nextcloud"],
-}
+try:
+    from brain.app_aliases import APP_ALIASES
+except Exception:
+    from app.brain.app_aliases import APP_ALIASES
 
 
 def _norm(value):
@@ -23,6 +18,9 @@ def _detect_app(question):
 
 def _detect_symptom(question):
     q = _norm(question)
+
+    if any(x in q for x in ["not open", "not opening", "cannot open", "cant open", "can't open", "not loading", "cannot load", "cant load", "can't load", "unreachable", "not reachable", "cannot connect", "cant connect", "can't connect", "offline", "down"]):
+        return "app opening / reachability issue"
 
     if any(x in q for x in ["not downloading", "no download", "download stuck", "downloads stuck", "stalled"]):
         return "download failure"
@@ -45,7 +43,17 @@ def _detect_symptom(question):
 def _report_has_app(report, app):
     if not app:
         return False
-    return app in _norm(report)
+
+    report_norm = _norm(report)
+    candidates = {app}
+    candidates.update(APP_ALIASES.get(app, []))
+
+    for candidate in candidates:
+        c = _norm(candidate)
+        if c and c in report_norm:
+            return True
+
+    return False
 
 
 def answer(bundle, question):
@@ -106,7 +114,17 @@ def answer(bundle, question):
     lines.append("- Host storage path exists")
     lines.append("- App internal path matches the host bind path")
 
-    if symptom == "download failure":
+    if symptom == "app opening / reachability issue":
+        lines.append("")
+        lines.append("### App opening / reachability focus")
+        lines.append("- Check whether the app container is running or exited.")
+        lines.append("- Check which host port is published for the app.")
+        lines.append("- Check whether the app port is reachable from LAN.")
+        lines.append("- Check firewall / ZFW / DOCKER-USER rules.")
+        lines.append("- Check recent container logs for startup errors.")
+        lines.append("- Check whether the ZimaOS app tile points to the correct port.")
+
+    elif symptom == "download failure":
         lines.append("")
         lines.append("### Download failure focus")
         lines.append("- Check download client container state.")
