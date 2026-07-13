@@ -51,7 +51,7 @@ def _verification_status(active_layer, layer_lines, report_text):
     if not str(report_text or "").strip():
         return {
             "state": "NOT VERIFIED",
-            "title": "❌ NOT VERIFIED",
+            "title": "❌ GUIDANCE ONLY / NOT VERIFIED FROM CURRENT REPORT",
             "detail": "Dashboard evidence could not be loaded, so this answer is not verified.",
         }
 
@@ -71,6 +71,12 @@ def _verification_status(active_layer, layer_lines, report_text):
         "not captured in this report",
         "not installed, not running",
         "fallback guidance route",
+        "no log evidence was available",
+        "no verified evidence is available",
+        "no repair plan should be given",
+        "no matching same-report evidence was found for a repair plan",
+        "root cause needs classification",
+        "not verified from the current report",
     ]
 
     partial_markers = [
@@ -89,6 +95,8 @@ def _verification_status(active_layer, layer_lines, report_text):
         "general playbook",
         "playbook guidance",
         "not fully verified from same-report evidence",
+        "final repair action is not fully verified",
+        "not fully verified until the affected layer confirms",
     ]
 
     if "zimaos manual knowledge engine" in layer:
@@ -115,22 +123,22 @@ def _verification_status(active_layer, layer_lines, report_text):
     if "fallback" in layer:
         return {
             "state": "NOT VERIFIED",
-            "title": "❌ NOT VERIFIED",
-            "detail": "The question did not match a verified diagnostic layer. This answer is guidance only.",
+            "title": "❌ GUIDANCE ONLY / NOT VERIFIED FROM CURRENT REPORT",
+            "detail": "Guidance only. The question did not match a verified diagnostic layer, so this is not verified from the current report.",
         }
 
     if "forum issue intake" in layer:
         return {
             "state": "NOT VERIFIED",
-            "title": "❌ NOT VERIFIED",
-            "detail": "This is intake guidance only. The root cause is not verified until the required evidence is provided.",
+            "title": "❌ GUIDANCE ONLY / NOT VERIFIED FROM CURRENT REPORT",
+            "detail": "Guidance only. This is intake triage, not a verified diagnosis from the current report.",
         }
 
     if any(marker in text for marker in not_verified_markers):
         return {
             "state": "NOT VERIFIED",
-            "title": "❌ NOT VERIFIED",
-            "detail": "The current report does not contain matching evidence to verify this answer.",
+            "title": "❌ GUIDANCE ONLY / NOT VERIFIED FROM CURRENT REPORT",
+            "detail": "Guidance only. The current report does not contain matching evidence to verify this as a diagnosis.",
         }
 
     if any(marker in text for marker in partial_markers):
@@ -201,7 +209,8 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
             out.append("#### Critical Same-Report Verifier")
             for finding in critical:
                 out.append(f"- {critical_badge(finding['level'])}: {finding['title']}")
-                out.append(f"  Evidence: {finding['detail']}")
+                detail = finding.get("detail") or finding.get("evidence") or ""
+                out.append(f"  Evidence: {detail}")
                 out.append(f"  Why it matters: {finding['why']}")
                 out.append(f"  Next safest step: {finding['next']}")
             out.append("")

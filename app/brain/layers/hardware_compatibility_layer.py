@@ -49,7 +49,23 @@ def _norm(text: str) -> str:
 
 def is_hardware_question(question: str) -> bool:
     q = _norm(question)
-    return any(k in q for k in HARDWARE_KEYWORDS)
+    tokens = set(q.split())
+
+    for k in HARDWARE_KEYWORDS:
+        kk = _norm(k)
+        if not kk:
+            continue
+
+        # Multi-word hardware phrases still need phrase matching.
+        if " " in kk and kk in q:
+            return True
+
+        # Single-word hardware markers must match whole tokens.
+        # This prevents words like snapraid from matching the broad hardware token raid.
+        if " " not in kk and kk in tokens:
+            return True
+
+    return False
 
 
 def answer_hardware_compatibility(question: str) -> HardwareLayerResult:
@@ -131,7 +147,7 @@ The official ZimaBoard 2 dual NVMe adapter should support two NVMe SSDs without 
 ### {question.strip()}
 
 #### Verification status
-@@VERIFY:NOT VERIFIED@@ ❌ NOT VERIFIED
+@@VERIFY:NOT VERIFIED@@ ❌ GUIDANCE ONLY / NOT VERIFIED FROM CURRENT REPORT
 - Active layer: Hardware Compatibility Layer
 - Layer file: app/brain/layers/hardware_compatibility_layer.py
 

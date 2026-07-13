@@ -38,7 +38,7 @@ def other_system_findings(bundle, question):
     if not about_failed_units():
         for item in bundle.get("critical_findings", []):
             title = item.get("title", "")
-            detail = item.get("detail", "")
+            detail = item.get("detail") or item.get("evidence") or ""
             if "failed" in title.lower() or "failed" in detail.lower():
                 findings.append("Failed host unit detected.")
                 break

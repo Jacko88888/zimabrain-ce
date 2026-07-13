@@ -316,7 +316,7 @@ def classify(question):
         _score(candidates, "container_command_question", 24.0, ["gate:safety", "entity:docker-command"])
     if safety_intent and ("format" in qt or "disk" in qt or "drive" in qt):
         _score(candidates, "disk_command_question", 24.0, ["gate:safety", "entity:disk-command"])
-    if safety_intent and ("snapraid" in qt or "repair" in qt or "protected" in qt):
+    if safety_intent and ({"snapraid", "mergerfs", "parity", "pool", "protected", "protection"} & qt):
         _score(candidates, "snapraid_question", 24.0, ["gate:safety", "entity:snapraid-mergerfs"])
 
     # Protection question.
