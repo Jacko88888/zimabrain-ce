@@ -601,12 +601,20 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         forum_summary = layer["forum_summary"]
 
     else:
-        active_layer = "Fallback Guidance Route"
-        active_layer_file = "app/brain/answer_builder.py"
-        out.append("- This Flask cockpit currently answers dashboard evidence questions reliably.")
-        out.append("- Try: show me dashboard alerts, explain sda CRC errors, why is sdd filesystem usage 100%, which containers are exited, which disks are healthy, or is my system protected?")
-        next_step = "Ask a dashboard-specific question, or extend the Flask verifier with additional ZimaOS layers."
-        forum_summary = "Ask a dashboard-specific question so ZimaBrain can route the answer through the correct verifier layer."
+        if not focused_answer and bundle.get("critical_findings", []):
+            active_layer = "Critical Same-Report Verifier"
+            active_layer_file = "app/brain/answer_builder.py"
+            out.append("- This is a global system attention question.")
+            out.append("- ZimaBrain found same-report verifier findings and listed them above.")
+            next_step = "Review the listed critical findings one by one. Start with the exact evidence shown before changing containers, mounts, disks, or services."
+            forum_summary = "ZimaBrain found same-report verifier findings. Review the listed evidence first and avoid broad repair actions until the exact failed unit, mount, disk, or service is confirmed."
+        else:
+            active_layer = "Fallback Guidance Route"
+            active_layer_file = "app/brain/answer_builder.py"
+            out.append("- This Flask cockpit currently answers dashboard evidence questions reliably.")
+            out.append("- Try: show me dashboard alerts, explain sda CRC errors, why is sdd filesystem usage 100%, which containers are exited, which disks are healthy, or is my system protected?")
+            next_step = "Ask a dashboard-specific question, or extend the Flask verifier with additional ZimaOS layers."
+            forum_summary = "Ask a dashboard-specific question so ZimaBrain can route the answer through the correct verifier layer."
 
     if not focused_answer:
         out.append("")
