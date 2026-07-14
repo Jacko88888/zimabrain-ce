@@ -273,6 +273,26 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     log_intake_question = route.get("log_intake_question", False)
     repair_planner_question = route.get("repair_planner_question", False)
 
+    files_media_question = any(x in q for x in [
+        "files / appdata / media",
+        "files appdata media",
+        "files appdata",
+        "appdata media",
+        "media path",
+        "media paths",
+        "media path problem",
+        "media path problems",
+        "appdata path",
+        "appdata paths",
+        "files app",
+        "/media",
+        "/data/.media",
+        "casaos_data/.media",
+        "storage path problem",
+        "storage path problems",
+        "files / appdata",
+    ])
+
     service_activity_question = any(x in q for x in [
         "zimaos-welcome",
         "networkd-wait-online",
@@ -297,7 +317,32 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     active_layer_file = "app/brain/answer_builder.py"
     layer_start_index = len(out)
 
-    if service_activity_question:
+    if files_media_question:
+        active_layer = "Files / AppData / Media Same-Report Verifier"
+        active_layer_file = "app/brain/answer_builder.py"
+        critical = bundle.get("critical_findings", [])
+        matched = []
+        for item in critical:
+            hay = ((item.get("title", "") or "") + "\n" + (item.get("detail", "") or "") + "\n" + (item.get("why", "") or "")).lower()
+            if any(t in hay for t in ["files/appdata", "media mount", "/media", ".media", "appdata symlink", "media mirror"]):
+                matched.append(item)
+
+        if matched:
+            for finding in matched:
+                out.append(f"- {critical_badge(finding['level'])}: {finding['title']}")
+                detail = finding.get("detail") or finding.get("evidence") or ""
+                out.append(f"  Evidence: {detail}")
+                out.append(f"  Why it matters: {finding['why']}")
+                out.append(f"  Next safest step: {finding['next']}")
+            next_step = "Verify the exact active mount paths with findmnt before deleting /media folders, moving AppData, or editing container bind mounts."
+            forum_summary = "ZimaBrain found same-report Files/AppData/media evidence. Verify active mount paths before changing AppData, Files, or Docker bind paths."
+        else:
+            out.append("- No Files/AppData/media path problem was detected in the current report.")
+            out.append("- The same-report media/path verifier was checked, but no matching finding was present.")
+            next_step = "If the Files app still shows a path error, export again while the error is visible and include findmnt evidence."
+            forum_summary = "No same-report Files/AppData/media path problem was detected in this export."
+
+    elif service_activity_question:
         active_layer = "Service / Activity Same-Report Verifier"
         active_layer_file = "app/brain/answer_builder.py"
         critical = bundle.get("critical_findings", [])

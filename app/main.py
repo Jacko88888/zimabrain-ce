@@ -1237,7 +1237,7 @@ def analyse_report(report_text: str, question: str = "") -> str:
 
 
 def load_logo_data_uri():
-    logo_path = "/app/assets/zimabrain-ce-logo.svg"
+    logo_path = "/app/assets/zimabrain-ce-logo.png"
     try:
         with open(logo_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")

@@ -3190,7 +3190,7 @@ iframe {{
 </div>
 
 <div class="main">
-  <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.svg" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
+  <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.png" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
   <div class="subtitle">{APP_SUBTITLE}</div>
   <div class="subtitle">{APP_DESCRIPTOR}</div>
   <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
@@ -3658,7 +3658,7 @@ pre {{
 <body>
 <div class="wrap">
   <div class="header">
-    <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.svg" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
+    <div style="display:flex;align-items:center;gap:14px;"><img src="/assets/zimabrain-ce-logo.png" alt="ZimaBrain CE logo" style="width:56px;height:56px;border-radius:14px;"><h1>{APP_NAME}</h1></div>
     <div class="subtitle">{APP_SUBTITLE}</div>
     <div class="subtitle">{APP_DESCRIPTOR}</div>
     <div class="badge">App {APP_VERSION} · Reliable Flask mode · Local verifier</div>
