@@ -273,11 +273,72 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     log_intake_question = route.get("log_intake_question", False)
     repair_planner_question = route.get("repair_planner_question", False)
 
+    service_activity_question = any(x in q for x in [
+        "zimaos-welcome",
+        "networkd-wait-online",
+        "wait-online",
+        "active service",
+        "running service",
+        "service running",
+        "service is running",
+        "what service",
+        "using disk",
+        "disk activity",
+        "disk io",
+        "disk i/o",
+        "using cpu",
+        "cpu activity",
+        "high cpu",
+        "pidstat",
+        "iostat",
+    ])
+
     active_layer = "Verified Answer Builder"
     active_layer_file = "app/brain/answer_builder.py"
     layer_start_index = len(out)
 
-    if failed_unit_question:
+    if service_activity_question:
+        active_layer = "Service / Activity Same-Report Verifier"
+        active_layer_file = "app/brain/answer_builder.py"
+        critical = bundle.get("critical_findings", [])
+        matched = []
+        terms = []
+        if "zimaos-welcome" in q:
+            terms.append("zimaos-welcome")
+        if "networkd-wait-online" in q or "wait-online" in q:
+            terms.append("networkd-wait-online")
+        if "disk" in q or "pidstat" in q or "iostat" in q:
+            terms.extend(["disk i/o", "disk activity"])
+        if "cpu" in q:
+            terms.extend(["high cpu", "cpu process"])
+
+        for item in critical:
+            hay = ((item.get("title", "") or "") + "\n" + (item.get("detail", "") or "")).lower()
+            if any(t in hay for t in terms):
+                matched.append(item)
+
+        if matched:
+            for finding in matched:
+                out.append(f"- {critical_badge(finding['level'])}: {finding['title']}")
+                detail = finding.get("detail") or finding.get("evidence") or ""
+                out.append(f"  Evidence: {detail}")
+                out.append(f"  Why it matters: {finding['why']}")
+                out.append(f"  Next safest step: {finding['next']}")
+            next_step = "Repeat the same question after a few minutes or after the user changes boot parameters, then compare the same service/activity findings."
+            forum_summary = "ZimaBrain found same-report service/activity evidence. Compare the exact service state, CPU process, or disk I/O process across exports before calling it a root cause."
+        else:
+            if "cpu" in q:
+                out.append("- No high CPU process was detected in the current report.")
+                out.append("- CPU process evidence was checked, but no process matched the high-CPU threshold during this export.")
+                next_step = "If the CPU load returns, export again while the load is happening and compare the top CPU process evidence."
+                forum_summary = "ZimaBrain checked same-report CPU evidence and did not detect a high-CPU process during this export."
+            else:
+                out.append("- No matching service/activity finding was detected in the current report.")
+                out.append("- The report may still contain raw active service, pidstat, iostat, or process evidence, but no rule matched this exact question yet.")
+                next_step = "Ask for a fresh export while the issue is happening, then check active services, pidstat/iostat evidence, and failed units together."
+                forum_summary = "No matching same-report service/activity finding was detected for this question. Collect a fresh export while the symptom is active."
+
+    elif failed_unit_question:
         layer = failed_units.answer(bundle, critical_badge)
         active_layer = "Failed Units Layer"
         active_layer_file = "app/brain/layers/failed_units.py"
@@ -612,7 +673,7 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
             active_layer = "Fallback Guidance Route"
             active_layer_file = "app/brain/answer_builder.py"
             out.append("- This Flask cockpit currently answers dashboard evidence questions reliably.")
-            out.append("- Try: show me dashboard alerts, explain sda CRC errors, why is sdd filesystem usage 100%, which containers are exited, which disks are healthy, or is my system protected?")
+            out.append("- Try: show me dashboard alerts, explain disk CRC errors, why is a filesystem usage alert showing 100%, which containers are exited, which disks are healthy, or is my system protected?")
             next_step = "Ask a dashboard-specific question, or extend the Flask verifier with additional ZimaOS layers."
             forum_summary = "Ask a dashboard-specific question so ZimaBrain can route the answer through the correct verifier layer."
 

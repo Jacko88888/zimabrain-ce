@@ -27,18 +27,26 @@ def answer(bundle):
     else:
         lines.append("- No real CRC alerts were parsed.")
 
-    sda = None
+    crc_disks = []
     for d in bundle.get("disks", []):
-        if d.get("device") == "sda":
-            sda = d
-            break
+        raw_crc = d.get("crc")
+        try:
+            crc_value = int(str(raw_crc).strip())
+        except Exception:
+            crc_value = 0
+        if crc_value > 0:
+            crc_disks.append((d, crc_value))
 
-    if sda:
-        lines.append(
-            f"- sda evidence: health={sda.get('health')}, temp={sda.get('temp')}°C, "
-            f"realloc={sda.get('realloc')}, pending={sda.get('pending')}, "
-            f"crc={sda.get('crc')}, power_on={sda.get('power_on')}."
-        )
+    if crc_disks:
+        for d, crc_value in crc_disks:
+            dev = d.get("device", "unknown")
+            lines.append(
+                f"- {dev} evidence: health={d.get('health')}, temp={d.get('temp')}°C, "
+                f"realloc={d.get('realloc')}, pending={d.get('pending')}, "
+                f"crc={crc_value}, power_on={d.get('power_on')}."
+            )
+    else:
+        lines.append("- No disk with a non-zero CRC count was found in the parsed SMART disk table.")
 
     lines.append("")
     lines.append("What CRC errors usually mean:")
@@ -62,6 +70,6 @@ def answer(bundle):
 
     return {
         "lines": lines,
-        "next_step": "Confirm whether the sda CRC count is increasing over time. If it increases, check cable, port, backplane, controller path, and power before blaming the disk.",
-        "forum_summary": "sda shows CRC errors, but SMART health still reports PASSED with no reallocated or pending sectors. This usually points to a SATA/SAS link issue such as cable, port, backplane, controller path, or power stability rather than a failing disk. Monitor whether the CRC count increases. If it does, reseat or replace the cable and try another port before considering disk replacement.",
+        "next_step": "Confirm whether the CRC count is increasing over time on the exact disk shown above. If it increases, check cable, port, backplane, controller path, and power before blaming the disk.",
+        "forum_summary": "The disk shown above has CRC errors, but SMART health may still report PASSED with no reallocated or pending sectors. This usually points to a SATA/SAS link issue such as cable, port, backplane, controller path, or power stability rather than a failing disk. Monitor whether the CRC count increases. If it does, reseat or replace the cable and try another port before considering disk replacement.",
     }

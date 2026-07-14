@@ -1497,6 +1497,11 @@ def host_hardware_metrics_panel(bundle):
 def collect_same_report_evidence():
     return {
         "failed_units": run_host_command("systemctl --failed --plain --no-pager --no-legend 2>/dev/null || true"),
+        "active_services": run_host_command("systemctl list-units --type=service --state=running,failed --plain --no-pager --no-legend 2>/dev/null | head -220 || true", timeout=15),
+        "service_hotlist": run_host_command("for u in zimaos-welcome.service systemd-networkd-wait-online.service systemd-networkd.service zima-cron-fix.service casaos-gateway.service casaos-user-service.service casaos-local-storage.service docker.service containerd.service; do echo \"===== $u =====\"; systemctl is-active \"$u\" 2>/dev/null || true; systemctl show \"$u\" -p Id -p ActiveState -p SubState -p Result -p MainPID -p ExecMainPID -p ExecMainStatus -p ExecMainStartTimestamp -p FragmentPath --no-pager 2>/dev/null || true; done", timeout=20),
+        "process_top": run_host_command("ps -eo pid,ppid,comm,stat,pcpu,pmem,args --sort=-pcpu 2>/dev/null | head -25 || true", timeout=10),
+        "io_top": run_host_command("if command -v pidstat >/dev/null 2>&1; then pidstat -d 1 1 2>/dev/null | sed -n '1,80p'; else echo 'pidstat not installed'; echo '---PROC_IO_TOP_APPROX---'; for p in /proc/[0-9]*; do pid=${p##*/}; comm=$(cat \"$p/comm\" 2>/dev/null || true); r=$(awk '/read_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); w=$(awk '/write_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); [ -n \"$comm\" ] && echo \"$r $w $pid $comm\"; done | sort -nrk1,1 -nrk2,2 | head -20; fi", timeout=20),
+        "iostat_brief": run_host_command("if command -v iostat >/dev/null 2>&1; then iostat -dx 1 1 2>/dev/null | sed -n '1,100p'; else echo 'iostat not installed'; echo '---DISKSTATS---'; cat /proc/diskstats 2>/dev/null | head -60; fi", timeout=20),
         "lsblk": run_host_command("lsblk -o NAME,PKNAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null || true"),
         "mounts": run_host_command("findmnt -P -o SOURCE,TARGET,FSTYPE,OPTIONS 2>/dev/null | grep -Ei 'mergerfs|snapraid|/DATA|/media|\\.media' | grep -v '/docker/overlay2/' | head -160 || true"),
         "media_paths": run_host_command("ls -ld /DATA /DATA/AppData /media /DATA/.media /var/lib/casaos_data/.media 2>/dev/null || true; echo ---MEDIA_ROOTS---; find /media -maxdepth 1 -mindepth 1 -type d -printf '%M %u %g %p\\n' 2>/dev/null | head -80", timeout=12),
@@ -1573,6 +1578,130 @@ def evaluate_critical_same_report(evidence):
     low_ps = docker_ps.lower()
     low_access = docker_access.lower()
     low_nvidia = nvidia.lower()
+
+    active_services = evidence.get("active_services", "") or ""
+    service_hotlist = evidence.get("service_hotlist", "") or ""
+    process_top = evidence.get("process_top", "") or ""
+    io_top = evidence.get("io_top", "") or ""
+    iostat_brief = evidence.get("iostat_brief", "") or ""
+    low_service_hotlist = service_hotlist.lower()
+    low_process_top = process_top.lower()
+    low_io_top = io_top.lower()
+
+    def _service_block(unit_name):
+        marker = f"===== {unit_name} ====="
+        if marker not in service_hotlist:
+            return ""
+        part = service_hotlist.split(marker, 1)[1]
+        next_marker = part.find("=====")
+        if next_marker >= 0:
+            part = part[:next_marker]
+        return part.strip()
+
+    def _service_value(block, key):
+        prefix = key + "="
+        for line in block.splitlines():
+            line = line.strip()
+            if line.startswith(prefix):
+                return line.split("=", 1)[1].strip()
+        return ""
+
+    def _pidstat_average_lines():
+        rows = []
+        for line in io_top.splitlines():
+            s = line.strip()
+            if not s.startswith("Average:"):
+                continue
+            if "Command" in s or "UID" in s:
+                continue
+            parts = s.split()
+            if len(parts) < 8:
+                continue
+            try:
+                rd = float(parts[3])
+                wr = float(parts[4])
+            except Exception:
+                continue
+            cmd = parts[-1]
+            rows.append((rd + wr, rd, wr, cmd, s))
+        rows.sort(reverse=True, key=lambda x: x[0])
+        return rows
+
+    welcome_block = _service_block("zimaos-welcome.service")
+    if welcome_block:
+        welcome_state = _service_value(welcome_block, "ActiveState")
+        welcome_sub = _service_value(welcome_block, "SubState")
+        welcome_result = _service_value(welcome_block, "Result")
+        level = "YELLOW" if welcome_state == "failed" or welcome_result not in ("", "success") else "INFO"
+        title = "zimaos-welcome service status captured"
+        if welcome_state == "inactive" and welcome_result == "success":
+            title = "zimaos-welcome is inactive after successful exit"
+        elif welcome_state == "active":
+            title = "zimaos-welcome is currently active"
+        elif welcome_state == "failed":
+            title = "zimaos-welcome service failure detected"
+        findings.append({
+            "level": level,
+            "title": title,
+            "detail": welcome_block[:700],
+            "why": "Service-specific status is now captured so questions about zimaos-welcome do not fall back to generic guidance.",
+            "next": "If the user reports UI, welcome, or first-run behaviour, compare this status with journal evidence before restarting services.",
+        })
+
+    wait_block = _service_block("systemd-networkd-wait-online.service")
+    if wait_block:
+        wait_state = _service_value(wait_block, "ActiveState")
+        wait_result = _service_value(wait_block, "Result")
+        if wait_state == "failed" or "systemd-networkd-wait-online.service" in low_failed:
+            findings.append({
+                "level": "YELLOW",
+                "title": "systemd-networkd-wait-online service failure detected",
+                "detail": wait_block[:700],
+                "why": "This failed unit can explain boot/wait-online differences between exported reports.",
+                "next": "Compare this service status with /proc/cmdline and the matching export timestamp before blaming kernel parameters.",
+            })
+        elif wait_state == "inactive" and wait_result == "success":
+            findings.append({
+                "level": "INFO",
+                "title": "systemd-networkd-wait-online is not currently failed",
+                "detail": wait_block[:700],
+                "why": "The service is present in the hotlist and currently exited successfully, which helps compare default vs modified cmdline reports.",
+                "next": "If another report shows this unit failed, treat it as a confirmed report-to-report state change, not yet as proof of root cause.",
+            })
+
+    pidstat_rows = _pidstat_average_lines()
+    if pidstat_rows:
+        total, rd, wr, cmd, raw = pidstat_rows[0]
+        if total >= 500 and "python" not in cmd.lower():
+            findings.append({
+                "level": "INFO",
+                "title": "Active disk I/O process observed",
+                "detail": raw,
+                "why": "pidstat captured a process doing measurable disk I/O during the report. This helps diagnose unusual disk activity instead of relying only on SMART data.",
+                "next": "If the user reports constant disk activity, ask whether this process remains on top across repeated exports.",
+            })
+
+    cpu_lines = []
+    for line in process_top.splitlines()[1:12]:
+        parts = line.split(None, 6)
+        if len(parts) < 7:
+            continue
+        try:
+            pcpu = float(parts[4])
+        except Exception:
+            continue
+        cmdline = parts[6]
+        noisy_collectors = ("collect_same_report_evidence", "python3 -", "ps -eo ", " sort=", "head -25")
+        if pcpu >= 50 and not any(x in cmdline for x in noisy_collectors):
+            cpu_lines.append(line.strip())
+    if cpu_lines:
+        findings.append({
+            "level": "YELLOW",
+            "title": "High CPU process observed during report",
+            "detail": "\n".join(cpu_lines[:5]),
+            "why": "A process was using high CPU while the report was collected. This can help explain loaded CPU symptoms or regressions.",
+            "next": "Re-run the report after a few minutes and confirm whether the same process remains high before restarting anything.",
+        })
 
     auditd = evidence.get("auditd", "")
     low_auditd = auditd.lower()

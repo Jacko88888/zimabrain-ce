@@ -46,11 +46,11 @@ def other_system_findings(bundle, question):
     for alert in normalized.get("real_alerts", []):
         low = alert.lower()
 
-        if "sda" in low and "crc" in low and not about_crc():
-            findings.append("sda has CRC errors.")
+        if "crc" in low and not about_crc():
+            findings.append("A disk has CRC errors. Check the exact device in SMART evidence.")
 
-        if "sdd" in low and "filesystem usage" in low and not about_sdd():
-            findings.append("sdd filesystem usage is 100%.")
+        if "filesystem usage" in low and not about_sdd():
+            findings.append("A disk/filesystem usage alert was detected. Verify the exact mount before deleting anything.")
 
     exited = normalized.get("container_alerts", [])
     if exited and not about_containers():
