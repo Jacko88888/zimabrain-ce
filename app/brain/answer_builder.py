@@ -40,6 +40,7 @@ from brain.layers import install_boot_diag
 from brain.layers import manual_knowledge
 from brain.layers import third_party_app_store_index
 from brain.layers import media_app_verified_guides
+from brain.layers import custom_question
 from brain.layers.hardware_compatibility_layer import answer_hardware_compatibility
 from brain.layers.smart_health_layer import answer_smart_health
 
@@ -715,12 +716,15 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
             next_step = "Review the listed critical findings one by one. Start with the exact evidence shown before changing containers, mounts, disks, or services."
             forum_summary = "ZimaBrain found same-report verifier findings. Review the listed evidence first and avoid broad repair actions until the exact failed unit, mount, disk, or service is confirmed."
         else:
-            active_layer = "Fallback Guidance Route"
-            active_layer_file = "app/brain/answer_builder.py"
-            out.append("- This Flask cockpit currently answers dashboard evidence questions reliably.")
-            out.append("- Try: show me dashboard alerts, explain disk CRC errors, why is a filesystem usage alert showing 100%, which containers are exited, which disks are healthy, or is my system protected?")
-            next_step = "Ask a dashboard-specific question, or extend the Flask verifier with additional ZimaOS layers."
-            forum_summary = "Ask a dashboard-specific question so ZimaBrain can route the answer through the correct verifier layer."
+            layer = custom_question.answer(question, bundle)
+            active_layer = "Custom Question Evidence Layer"
+            active_layer_file = "app/brain/layers/custom_question.py"
+            out.extend(layer["lines"])
+            next_step = layer["next_step"]
+            forum_summary = layer["forum_summary"]
+            trust_state_override = layer.get("trust_state")
+            trust_title_override = layer.get("trust_title")
+            trust_detail_override = layer.get("trust_detail")
 
     if not focused_answer:
         out.append("")

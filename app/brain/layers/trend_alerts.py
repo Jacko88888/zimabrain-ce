@@ -1,5 +1,7 @@
 import os
-import sqlite3
+
+from brain import health_memory
+
 
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 
@@ -7,184 +9,128 @@ TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 def is_alert_question(question):
     q = (question or "").lower()
     return any(x in q for x in [
-        "trend alert",
-        "trend alerts",
-        "any alerts",
-        "do i have alerts",
-        "do i have any alerts",
-        "proactive alert",
-        "proactive alerts",
-        "alert me",
-        "drift alert",
-        "drift alerts",
-        "port alert",
-        "smart alert",
-        "nvme alert",
-        "what should alert",
-        "anything changed dangerously",
+        "trend alert", "trend alerts", "any alerts", "do i have alerts",
+        "do i have any alerts", "proactive alert", "proactive alerts",
+        "alert me", "drift alert", "drift alerts", "port alert",
+        "smart alert", "nvme alert", "what should alert",
+        "anything changed dangerously", "what should i check first",
     ])
 
 
-def _read_rows(limit=2):
-    if not os.path.exists(TREND_DB_PATH):
-        return []
-
-    with sqlite3.connect(TREND_DB_PATH, timeout=5) as con:
-        con.row_factory = sqlite3.Row
-        return list(con.execute("""
-            SELECT
-              id,
-              created_at,
-              app_version,
-              running_containers,
-              published_ports,
-              lan_reachable_ports,
-              localhost_only_ports,
-              possible_blocked_ports,
-              smart_warning_markers,
-              nvme_warning_markers
-            FROM trend_snapshots
-            ORDER BY id DESC
-            LIMIT ?
-        """, (limit,)))
-
-
-def _delta(latest, previous, key):
-    return int(latest[key]) - int(previous[key])
-
-
-def _fmt_delta(value):
-    if value > 0:
-        return f"+{value}"
-    return str(value)
-
-
-def _analyse(latest, previous):
-    alerts = []
-    stable = []
-
-    checks = [
-        ("Published ports", "published_ports", "increase", "A new published port may expose another service."),
-        ("LAN reachable ports", "lan_reachable_ports", "increase", "A new LAN reachable port may increase network exposure."),
-        ("Possible blocked ports", "possible_blocked_ports", "increase", "A port that was reachable locally but not on LAN may indicate firewall, ZFW, bind, VLAN, or routing drift."),
-        ("SMART warning markers", "smart_warning_markers", "increase", "More SMART warning markers may mean disk health risk or reduced SMART visibility."),
-        ("NVMe warning markers", "nvme_warning_markers", "increase", "More NVMe warning markers may mean increasing NVMe risk or error count drift."),
-        ("Running containers", "running_containers", "change", "Container count changed since the previous scan."),
-    ]
-
-    for label, key, mode, why in checks:
-        d = _delta(latest, previous, key)
-
-        if mode == "increase" and d > 0:
-            alerts.append(f"{label}: {_fmt_delta(d)}. {why}")
-        elif mode == "change" and d != 0:
-            alerts.append(f"{label}: {_fmt_delta(d)}. {why}")
-        else:
-            stable.append(f"{label}: {_fmt_delta(d)}")
-
-    return alerts, stable
+def _actionable(event):
+    classification = event.get("classification")
+    if classification in {"worsening", "new_issue"}:
+        return True
+    if classification != "persistent":
+        return False
+    if event.get("category") == "service":
+        return True
+    if event.get("category") == "container":
+        if event.get("metric") == "health":
+            return event.get("current_text") == "unhealthy"
+        if event.get("metric") == "state":
+            return event.get("current_text") in {"restarting", "dead", "paused"}
+    if event.get("category") in {"smart", "nvme"}:
+        return True
+    return False
 
 
 def answer(question, bundle):
-    rows = _read_rows(limit=2)
+    scan = health_memory.latest_scan(TREND_DB_PATH) if os.path.exists(TREND_DB_PATH) else None
+    events = health_memory.latest_events(TREND_DB_PATH, limit=500) if scan else []
+    actionable = [x for x in events if _actionable(x)]
+    historical = [x for x in events if x.get("classification") == "historical_stable"]
+    recovered = [x for x in events if x.get("classification") == "recovered"]
+    drift_history = health_memory.configuration_drift_history(
+        TREND_DB_PATH, limit=10
+    ) if scan else {"drifts": []}
+    drift_attention = [
+        item for item in drift_history.get("drifts", [])
+        if item.get("severity") == "attention"
+        and item.get("to_scan") == scan["id"]
+    ] if scan else []
+    inactive = [x for x in events if
+                x.get("classification") == "persistent" and
+                x.get("category") == "container" and
+                x.get("metric") == "state" and
+                x.get("current_text") == "exited"]
 
-    out = []
-    out.append("### ZimaBrain Answer")
-    out.append("")
-    out.append("## ❓ Question asked")
-    out.append(f"### {question.strip()}")
-    out.append("")
-    out.append("#### Verification status")
-
-    if len(rows) >= 2:
-        out.append("@@VERIFY:VERIFIED@@ ✅ VERIFIED FROM LOCAL TREND DATABASE")
-        out.append("- This alert check compares the latest two SQLite trend snapshots.")
-    elif len(rows) == 1:
-        out.append("@@VERIFY:PARTIALLY VERIFIED@@ ⚠️ PARTIALLY VERIFIED")
-        out.append("- Only one trend snapshot exists, so ZimaBrain cannot compare drift yet.")
+    out = [
+        "### ZimaBrain Answer", "", "## ❓ Question asked",
+        f"### {question.strip()}", "", "#### Verification status",
+    ]
+    if scan and events:
+        out.extend([
+            "@@VERIFY:VERIFIED@@ ✅ VERIFIED FROM LOCAL HEALTH TIMELINE",
+            "- Alert status is based on the latest detailed local scan and its previous baseline.",
+        ])
     else:
-        out.append("@@VERIFY:NOT VERIFIED@@ ❌ NOT VERIFIED")
-        out.append("- No trend snapshots were found yet.")
+        out.extend([
+            "@@VERIFY:NOT VERIFIED@@ ❌ NOT VERIFIED",
+            "- No detailed health-memory comparison is available yet.",
+        ])
+    out.extend([
+        "- Active layer: Health Timeline Alert Layer",
+        "- Layer files: `app/brain/health_memory.py`, `app/brain/layers/trend_alerts.py`",
+        "", "#### Direct answer / severity",
+    ])
 
-    out.append("- Active layer: Trend Alert Layer")
-    out.append("- Layer file: `app/brain/layers/trend_alerts.py`")
-    out.append("")
-
-    out.append("#### Direct answer / severity")
-
-    if len(rows) < 1:
-        out.append("- No proactive trend alert check can be made yet because no snapshots exist.")
-        out.append("")
-        out.append("#### Next safest step")
-        out.append("- Run or refresh ZimaBrain once so it records a trend snapshot, then ask again.")
-        out.append("")
-        out.append("#### Forum-ready summary")
-        out.append("ZimaBrain proactive trend alerts need at least two saved snapshots before drift can be verified.")
+    if not scan or not events:
+        out.extend([
+            "- No verified detailed trend alert can be produced yet.", "",
+            "#### Next safest step", "- Collect at least two detailed scans.", "",
+            "#### Forum-ready summary",
+            "ZimaBrain needs detailed local health scans before trend alerts can be verified.",
+        ])
         return "\n".join(out)
 
-    latest = rows[0]
-    previous = rows[1] if len(rows) > 1 else None
-
-    if not previous:
-        out.append("- One trend snapshot exists, but no previous scan exists for comparison.")
-        out.append("")
-        out.append("#### Latest alert baseline")
-        out.append(f"- Latest snapshot: #{latest['id']} `{latest['created_at']}`")
-        out.append(f"- Running containers: {latest['running_containers']}")
-        out.append(f"- Published ports: {latest['published_ports']}")
-        out.append(f"- LAN reachable ports: {latest['lan_reachable_ports']}")
-        out.append(f"- Possible blocked ports: {latest['possible_blocked_ports']}")
-        out.append(f"- SMART warning markers: {latest['smart_warning_markers']}")
-        out.append(f"- NVMe warning markers: {latest['nvme_warning_markers']}")
-        out.append("")
-        out.append("#### Next safest step")
-        out.append("- Collect a second snapshot, then ZimaBrain can compare drift.")
-        out.append("")
-        out.append("#### Forum-ready summary")
-        out.append("ZimaBrain has started trend alert baselining, but it needs one more snapshot before proactive drift checks are meaningful.")
-        return "\n".join(out)
-
-    alerts, stable = _analyse(latest, previous)
-
-    if alerts:
-        out.append(f"- Trend drift detected: {len(alerts)} alert item(s).")
+    total_actionable = len(actionable) + len(drift_attention)
+    if total_actionable:
+        out.append(
+            f"- Actionable timeline conditions detected: {total_actionable}"
+        )
     else:
-        out.append("- No trend drift alerts detected between the latest two snapshots.")
-    out.append(f"- Latest snapshot: #{latest['id']} `{latest['created_at']}`")
-    out.append(f"- Previous snapshot: #{previous['id']} `{previous['created_at']}`")
-    out.append("")
+        out.append(
+            "- No actionable new, worsening, persistent, or configuration-drift "
+            "condition was detected."
+        )
+    out.extend([
+        f"- Actionable configuration drift: {len(drift_attention)}",
+        f"- Historical stable values: {len(historical)}",
+        f"- Recovered signals: {len(recovered)}",
+        f"- Persistently exited containers requiring intent verification: {len(inactive)}", "",
+        "#### Actionable timeline alerts",
+    ])
+    if actionable:
+        for item in actionable[:25]:
+            out.append(f"- {item['message']}")
+    if drift_attention:
+        for item in drift_attention[:25]:
+            out.append(
+                f"- Configuration drift: {item['message']} "
+                f"Status: {item['classification'].replace('_', ' ').title()}."
+            )
+    if not actionable and not drift_attention:
+        out.append("- None detected.")
 
-    out.append("#### Trend alerts")
-    if alerts:
-        for item in alerts:
-            out.append(f"- {item}")
+    out.extend(["", "#### Historical values with no increase"])
+    if historical:
+        for item in historical[:20]:
+            out.append(f"- {item['message']}")
+    else:
+        out.append("- None recorded in the latest comparison.")
+
+    out.extend(["", "#### Persistent inactive containers"])
+    if inactive:
+        for item in inactive[:20]:
+            out.append(f"- {item['entity_name']} remains exited. Verify whether this is intentional before treating it as a fault.")
     else:
         out.append("- None detected.")
-    out.append("")
 
-    out.append("#### Stable trend checks")
-    for item in stable:
-        out.append(f"- {item}")
-    out.append("")
-
-    out.append("#### Latest alert baseline")
-    out.append(f"- Running containers: {latest['running_containers']}")
-    out.append(f"- Published ports: {latest['published_ports']}")
-    out.append(f"- LAN reachable ports: {latest['lan_reachable_ports']}")
-    out.append(f"- Intentional localhost-only ports: {latest['localhost_only_ports']}")
-    out.append(f"- Possible blocked ports: {latest['possible_blocked_ports']}")
-    out.append(f"- SMART warning markers: {latest['smart_warning_markers']}")
-    out.append(f"- NVMe warning markers: {latest['nvme_warning_markers']}")
-    out.append("")
-
-    out.append("#### Next safest step")
-    if alerts:
-        out.append("- Review the alert items before exposing new ports, changing firewall rules, or trusting disk health.")
-    else:
-        out.append("- Keep collecting snapshots. No alert threshold was crossed between the latest two scans.")
-    out.append("")
-
-    out.append("#### Forum-ready summary")
-    out.append("ZimaBrain proactive trend alerts compare the latest two local SQLite snapshots for drift in container count, published ports, LAN reachable ports, possible blocked ports, and SMART/NVMe warning markers.")
-
+    out.extend([
+        "", "#### Next safest step",
+        "- Investigate worsening counters, restart loops, missing paths or mounts, newly exposed LAN ports, firewall/audit changes, and newly enabled privilege or Docker-socket access first. Verify intent before changing configuration.",
+        "", "#### Forum-ready summary",
+        "ZimaBrain separated actionable timeline alerts from unchanged historical counters and persistently inactive containers. This prevents old values from being repeatedly presented as new faults.",
+    ])
     return "\n".join(out)

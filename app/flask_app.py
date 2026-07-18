@@ -11,6 +11,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify, Response, send_from_directory, session, redirect, abort, make_response
 from brain import render as brain_render
 from brain import answer_builder
+from brain import health_memory
 import os
 import secrets
 import hmac
@@ -1496,6 +1497,7 @@ def host_hardware_metrics_panel(bundle):
 
 def collect_same_report_evidence():
     return {
+        "boot_id": run_host_command("cat /proc/sys/kernel/random/boot_id 2>/dev/null || true"),
         "failed_units": run_host_command("systemctl --failed --plain --no-pager --no-legend 2>/dev/null || true"),
         "active_services": run_host_command("systemctl list-units --type=service --state=running,failed --plain --no-pager --no-legend 2>/dev/null | head -220 || true", timeout=15),
         "service_hotlist": run_host_command("for u in zimaos-welcome.service systemd-networkd-wait-online.service systemd-networkd.service zima-cron-fix.service casaos-gateway.service casaos-user-service.service casaos-local-storage.service docker.service containerd.service; do echo \"===== $u =====\"; systemctl is-active \"$u\" 2>/dev/null || true; systemctl show \"$u\" -p Id -p ActiveState -p SubState -p Result -p MainPID -p ExecMainPID -p ExecMainStatus -p ExecMainStartTimestamp -p FragmentPath --no-pager 2>/dev/null || true; done", timeout=20),
@@ -1503,17 +1505,26 @@ def collect_same_report_evidence():
         "io_top": run_host_command("if command -v pidstat >/dev/null 2>&1; then pidstat -d 1 1 2>/dev/null | sed -n '1,80p'; else echo 'pidstat not installed'; echo '---PROC_IO_TOP_APPROX---'; for p in /proc/[0-9]*; do pid=${p##*/}; comm=$(cat \"$p/comm\" 2>/dev/null || true); r=$(awk '/read_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); w=$(awk '/write_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); [ -n \"$comm\" ] && echo \"$r $w $pid $comm\"; done | sort -nrk1,1 -nrk2,2 | head -20; fi", timeout=20),
         "iostat_brief": run_host_command("if command -v iostat >/dev/null 2>&1; then iostat -dx 1 1 2>/dev/null | sed -n '1,100p'; else echo 'iostat not installed'; echo '---DISKSTATS---'; cat /proc/diskstats 2>/dev/null | head -60; fi", timeout=20),
         "lsblk": run_host_command("lsblk -o NAME,PKNAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null || true"),
+        "disk_identity": run_host_command("lsblk -dn -P -o NAME,TYPE,MODEL,SERIAL 2>/dev/null || true"),
         "mounts": run_host_command("findmnt -P -o SOURCE,TARGET,FSTYPE,OPTIONS 2>/dev/null | grep -Ei 'mergerfs|snapraid|/DATA|/media|\\.media' | grep -v '/docker/overlay2/' | head -160 || true"),
         "media_paths": run_host_command("ls -ld /DATA /DATA/AppData /media /DATA/.media /var/lib/casaos_data/.media 2>/dev/null || true; echo ---MEDIA_ROOTS---; find /media -maxdepth 1 -mindepth 1 -type d -printf '%M %u %g %p\\n' 2>/dev/null | head -80", timeout=12),
+        "path_state": run_host_command("for p in /DATA /DATA/AppData /media /DATA/.media /var/lib/casaos_data/.media; do if [ -e \"$p\" ] || [ -L \"$p\" ]; then if [ -L \"$p\" ]; then type=symlink; elif [ -d \"$p\" ]; then type=directory; else type=other; fi; target=$(readlink \"$p\" 2>/dev/null || true); mode=$(stat -c '%a' \"$p\" 2>/dev/null || echo unknown); owner=$(stat -c '%u:%g' \"$p\" 2>/dev/null || echo unknown); echo \"$p|present=1|type=$type|target=$target|mode=$mode|owner=$owner\"; else echo \"$p|present=0|type=missing|target=|mode=|owner=\"; fi; done", timeout=12),
         "docker_ps": run_host_command("docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null | head -120 || true"),
+        "docker_states": run_host_command(
+            "for c in $(docker ps -aq 2>/dev/null); do "
+            "docker inspect --format '{{.Name}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.RestartCount}}|{{.State.StartedAt}}|{{.State.FinishedAt}}' \"$c\"; "
+            "done 2>/dev/null | head -240 || true",
+            timeout=25,
+        ),
         "docker_access": run_host_command(
             "for c in $(docker ps -q 2>/dev/null); do "
             "docker inspect --format '{{.Name}}|{{range .Mounts}}{{.Source}}->{{.Destination}}:{{.RW}};{{end}}|{{range $p,$v := .NetworkSettings.Ports}}{{$p}}=>{{range $v}}{{.HostIp}}:{{.HostPort}},{{end}};{{end}}' $c; "
             "done 2>/dev/null | head -200 || true",
             timeout=20,
         ),
+        "docker_security": run_host_command("for c in $(docker ps -q 2>/dev/null); do docker inspect --format '{{.Name}}|User={{.Config.User}}|Privileged={{.HostConfig.Privileged}}|PidMode={{.HostConfig.PidMode}}|SecurityOpt={{.HostConfig.SecurityOpt}}|CapAdd={{.HostConfig.CapAdd}}|{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' \"$c\"; done 2>/dev/null | head -200 || true", timeout=20),
         "nvidia": run_host_command("nvidia-smi -L 2>&1 || true"),
-        "smart": run_host_command("for d in /dev/sd?; do echo \"===== SMART $d =====\"; smartctl -H -A \"$d\" 2>&1 | sed -n '1,140p'; done 2>/dev/null || true", timeout=30),
+        "smart": run_host_command("for d in /dev/sd?; do echo \"===== SMART $d =====\"; smartctl -i -H -A \"$d\" 2>&1 | sed -n '1,160p'; done 2>/dev/null || true", timeout=30),
         "nvme_smart": run_host_command("for n in /dev/nvme?n1; do echo \"===== NVME $n =====\"; nvme smart-log \"$n\" 2>&1 | sed -n '1,90p'; done 2>/dev/null || true", timeout=30),
 "port_reachability": run_host_command(
             r"""LAN_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
@@ -1548,7 +1559,7 @@ done | head -120""",
         "zfw_files": run_host_command("ls -l /var/lib/extensions/zfw.raw /DATA/zfw/zfw /DATA/zfw/rules.json 2>/dev/null || true"),
         "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
         "auditd": run_host_command("systemctl is-active auditd.service 2>/dev/null || true; systemctl status auditd.service --no-pager 2>/dev/null | head -80; echo ---AUDIT_PATHS---; ls -ld /var/log/audit 2>/dev/null || true; ls -l /var/log/audit/audit.log 2>/dev/null || true", timeout=12),
-        "self_docker_security": run_host_command("docker inspect zimabrain-ce-flask-8601 --format 'User={{.Config.User}} Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}} SecurityOpt={{.HostConfig.SecurityOpt}} CapAdd={{.HostConfig.CapAdd}}' 2>/dev/null || true; docker inspect zimabrain-ce-flask-8601 --format '{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' 2>/dev/null || true"),
+        "self_docker_security": run_host_command("docker inspect zimabrain-ce --format 'User={{.Config.User}} Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}} SecurityOpt={{.HostConfig.SecurityOpt}} CapAdd={{.HostConfig.CapAdd}}' 2>/dev/null || true; docker inspect zimabrain-ce --format '{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' 2>/dev/null || true"),
         "host_os": run_host_command("cat /etc/os-release 2>/dev/null || true"),
         "kernel": run_host_command("uname -r 2>/dev/null || true"),
         "uptime": run_host_command("uptime -p 2>/dev/null || true"),
@@ -2039,7 +2050,28 @@ def record_trend_snapshot(bundle):
 
         published_ports = _count_published_ports_from_evidence(evidence)
         lan_reachable, localhost_only, possible_blocked = _count_reachability_groups(evidence)
-        smart_warnings, nvme_warnings = _count_smart_warnings(evidence)
+        try:
+            memory_snapshot = health_memory.record_health_scan(
+                evidence,
+                APP_VERSION,
+                TREND_DB_PATH,
+            )
+        except Exception as memory_error:
+            memory_snapshot = {
+                "ok": False,
+                "error": str(memory_error),
+            }
+
+        if memory_snapshot.get("ok"):
+            smart_warnings = int(
+                memory_snapshot.get("smart_positive_signals", 0) or 0
+            )
+            nvme_warnings = int(
+                memory_snapshot.get("nvme_critical_signals", 0) or 0
+            )
+        else:
+            smart_warnings, nvme_warnings = _count_smart_warnings(evidence)
+
         running_containers = _count_running_containers(evidence)
 
         with sqlite3.connect(TREND_DB_PATH, timeout=5) as con:
@@ -2091,6 +2123,7 @@ def record_trend_snapshot(bundle):
             "possible_blocked_ports": possible_blocked,
             "smart_warning_markers": smart_warnings,
             "nvme_warning_markers": nvme_warnings,
+            "memory_scan": memory_snapshot,
         }
     except Exception as e:
         return {
@@ -3033,10 +3066,29 @@ ul {{ padding-left:20px; }}
   background:var(--panel); border:1px solid var(--line); border-radius:16px;
   padding:16px; margin-top:18px;
 }}
+.question-label {{
+  display:block; margin-bottom:7px; color:#dbeafe;
+  font-size:13px; font-weight:800;
+}}
+.question-selector {{
+  width:100%; box-sizing:border-box; margin-bottom:8px;
+  background:#050814; color:var(--text);
+  border:1px solid var(--line); border-radius:12px; padding:11px 12px;
+  font:inherit; cursor:pointer;
+}}
+.question-selector:focus, .question:focus {{
+  outline:2px solid rgba(96,165,250,.55);
+  outline-offset:1px; border-color:#60a5fa;
+}}
+.question-hint {{
+  margin:0 0 10px; color:var(--muted);
+  font-size:13px; line-height:1.45;
+}}
 .question {{
-  width:100%; height:100px; background:#050814; color:var(--text);
+  width:100%; min-height:100px; box-sizing:border-box;
+  background:#050814; color:var(--text);
   border:1px solid var(--line); border-radius:12px; padding:12px;
-  font-family:monospace;
+  font-family:monospace; resize:vertical;
 }}
 button, .button {{
   background:linear-gradient(90deg,#2563eb,#7c3aed);
@@ -3199,9 +3251,101 @@ iframe {{
   <div class="panel">
     <h3>Ask ZimaBrain CE</h3>
     <form method="post" action="/ask">\n    {csrf_field()}
-      <textarea class="question" name="question" placeholder="Paste or type a new question here..."></textarea>
+      <label class="question-label" for="guided-question">Prepared diagnostic question</label>
+      <select class="question-selector" id="guided-question"
+              aria-describedby="guided-question-hint"
+              onchange="var q=document.getElementById('question-input');if(this.value==='__custom__')q.value='';else if(this.value)q.value=this.value;q.focus();">
+        <option value="">Choose a diagnostic question...</option>
+        <optgroup label="General health">
+          <option value="Give me a complete system-health assessment.">Give me a complete system-health assessment.</option>
+          <option value="What should I check first?">What should I check first?</option>
+          <option value="Are there any critical risks?">Are there any critical risks?</option>
+          <option value="What has changed since the previous scan?">What has changed since the previous scan?</option>
+        </optgroup>
+        <optgroup label="Storage and disks">
+          <option value="Are my disks healthy?">Are my disks healthy?</option>
+          <option value="Are any SMART values getting worse?">Are any SMART values getting worse?</option>
+          <option value="Are there missing or changed mounts?">Are there missing or changed mounts?</option>
+          <option value="Is there unusual disk activity?">Is there unusual disk activity?</option>
+          <option value="Are any storage paths unavailable?">Are any storage paths unavailable?</option>
+        </optgroup>
+        <optgroup label="Docker and applications">
+          <option value="Which containers are stopped or unhealthy?">Which containers are stopped or unhealthy?</option>
+          <option value="Are any containers restarting repeatedly?">Are any containers restarting repeatedly?</option>
+          <option value="Are any applications using missing paths?">Are any applications using missing paths?</option>
+          <option value="Are any Docker ports exposed unnecessarily?">Are any Docker ports exposed unnecessarily?</option>
+          <option value="Are any containers misconfigured?">Are any containers misconfigured?</option>
+        </optgroup>
+        <optgroup label="Services and operating system">
+          <option value="Which services are failed or degraded?">Which services are failed or degraded?</option>
+          <option value="What caused the failed service?">What caused the failed service?</option>
+          <option value="Did this issue start after a ZimaOS update?">Did this issue start after a ZimaOS update?</option>
+          <option value="Are any required ZimaOS helper files missing?">Are any required ZimaOS helper files missing?</option>
+          <option value="Are there signs of a packaging regression?">Are there signs of a packaging regression?</option>
+        </optgroup>
+        <optgroup label="Performance">
+          <option value="Is memory pressure high?">Is memory pressure high?</option>
+          <option value="Is swap being used excessively?">Is swap being used excessively?</option>
+          <option value="What is causing high CPU load?">What is causing high CPU load?</option>
+          <option value="What process is causing disk activity?">What process is causing disk activity?</option>
+          <option value="Are temperatures abnormal?">Are temperatures abnormal?</option>
+        </optgroup>
+        <optgroup label="Security">
+          <option value="Is the system adequately protected?">Is the system adequately protected?</option>
+          <option value="Are any containers overexposed?">Are any containers overexposed?</option>
+          <option value="Are any privileged containers risky?">Are any privileged containers risky?</option>
+          <option value="Is Docker socket access excessive?">Is Docker socket access excessive?</option>
+          <option value="Are there unnecessary open ports?">Are there unnecessary open ports?</option>
+        </optgroup>
+        <optgroup label="Networking">
+          <option value="Are there DNS or routing problems?">Are there DNS or routing problems?</option>
+          <option value="Is Tailscale functioning correctly?">Is Tailscale functioning correctly?</option>
+          <option value="Are multiple network interfaces causing routing conflicts?">Are multiple network interfaces causing routing conflicts?</option>
+          <option value="Which services are listening on the network?">Which services are listening on the network?</option>
+        </optgroup>
+        <option value="__custom__">Custom question — type below</option>
+      </select>
+      <div class="question-hint" id="guided-question-hint">Choose a prepared question, edit it if needed, or type any custom question below.</div>
+      <textarea class="question" id="question-input" name="question"
+                placeholder="Ask about disks, containers, services, storage, security or performance."
+                oninput="document.getElementById('guided-question').value=''"
+                required></textarea>
       <p><button type="submit">Analyse Report</button></p>
     </form>
+    <script>
+    (() => {{
+      const input = document.getElementById("question-input");
+      if (!input) return;
+
+      const contextualHints = [
+        "Ask about disks, containers, services, storage, security or performance.",
+        "Example: Why is this container unhealthy?",
+        "Example: What changed since my previous scan?",
+        "Example: Is this SMART warning getting worse?"
+      ];
+
+      let hintIndex = 0;
+
+      const applyContextualHint = () => {{
+        if (!input.value && document.activeElement !== input) {{
+          input.placeholder = contextualHints[hintIndex];
+        }}
+      }};
+
+      input.placeholder = contextualHints[0];
+      input.addEventListener("blur", applyContextualHint);
+
+      const reducedMotion = window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (!reducedMotion) {{
+        window.setInterval(() => {{
+          hintIndex = (hintIndex + 1) % contextualHints.length;
+          applyContextualHint();
+        }}, 5000);
+      }}
+    }})();
+    </script>
   </div>
 
   <div class="cards">
