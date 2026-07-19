@@ -1,63 +1,130 @@
+import re
+import shlex
+
+
 def _evidence(bundle, key):
     return (bundle.get("same_report_evidence", {}) or {}).get(key, "") or ""
 
 
-def _has_read_only_text(text):
-    t = (text or "").lower()
-    return any(x in t for x in ["read-only", "read only", "readonly", " ro,", "(ro", " ro "])
+def _mount_values(line):
+    values = dict(re.findall(r'([A-Z_]+)="([^"]*)"', str(line or "")))
+    if values:
+        return values
+
+    try:
+        return {
+            key: value
+            for token in shlex.split(str(line or ""))
+            if "=" in token
+            for key, value in [token.split("=", 1)]
+        }
+    except ValueError:
+        return {}
+
+
+def _writable_storage_target(target):
+    return (
+        target == "/DATA"
+        or target.startswith("/DATA/")
+        or target == "/media"
+        or target.startswith("/media/")
+        or target == "/var/lib/casaos_data/.media"
+        or target.startswith("/var/lib/casaos_data/.media/")
+    )
+
+
+def _unexpected_read_only_mounts(text):
+    result = []
+
+    for raw in str(text or "").splitlines():
+        values = _mount_values(raw)
+        target = values.get("TARGET", "")
+        options = {
+            item.strip().lower()
+            for item in values.get("OPTIONS", "").split(",")
+            if item.strip()
+        }
+        fstype = values.get("FSTYPE", "").lower()
+
+        if (
+            target
+            and _writable_storage_target(target)
+            and "ro" in options
+            and fstype != "iso9660"
+        ):
+            result.append(raw.strip())
+
+    return result
 
 
 def answer(bundle, question):
-    report = bundle.get("report", "") or ""
     mounts = _evidence(bundle, "mounts")
-    df = _evidence(bundle, "df")
-    disk_health = str(bundle.get("disk_health", "") or "")
-    all_text = "\n".join([report, mounts, df, disk_health])
-
-    has_ro = _has_read_only_text(all_text)
     has_mounts = bool(mounts.strip())
-    has_disk = bool(disk_health.strip())
+    unexpected = _unexpected_read_only_mounts(mounts)
 
-    lines = []
-    lines.append("- This is a read-only storage diagnostic question.")
-    lines.append("- The layer checks same-report mount, filesystem, and disk evidence before suggesting repair steps.")
-    lines.append("")
-    lines.append("### Same-report evidence")
-    lines.append(f"- Mount evidence parsed: {'yes' if has_mounts else 'no'}")
-    lines.append(f"- Disk health evidence parsed: {'yes' if has_disk else 'no'}")
-    lines.append(f"- Read-only wording detected in current evidence: {'yes' if has_ro else 'no'}")
+    lines = [
+        "- This is a read-only storage diagnostic question.",
+        "- The layer checks structured active-mount targets and mount options.",
+        "",
+        "### Same-report evidence",
+        f"- Active mount evidence parsed: {'yes' if has_mounts else 'no'}",
+        (
+            "- Unexpectedly read-only writable-storage mounts: "
+            f"{len(unexpected)}"
+        ),
+    ]
 
-    if not has_ro:
-        lines.append("")
-        lines.append("- No matching same-report read-only mount evidence was found.")
-        lines.append("- The root cause is not verified from the current report.")
+    if not has_mounts:
+        lines.extend([
+            "",
+            "- No evidence was parsed for active mounts.",
+        ])
         return {
             "lines": lines,
-            "next_step": "Collect active mount output, df output, lsblk output, and recent filesystem errors before attempting any repair.",
-            "forum_summary": "The read-only storage issue is not verified yet. Collect active mount, df, lsblk, SMART, and filesystem error evidence before repair.",
+            "next_step": (
+                "Collect structured active mount evidence before changing "
+                "mount options or running filesystem repair."
+            ),
+            "forum_summary": (
+                "Active mount evidence was unavailable, so writable-storage "
+                "mount state could not be assessed."
+            ),
         }
 
-    lines.append("")
-    lines.append("- Read-only wording was detected in the current evidence.")
-    lines.append("- Root cause is not fully verified until the affected device, filesystem, and journal errors are checked.")
-
-    lines.append("")
-    lines.append("### Required checks before repair")
-    lines.append("- Confirm the exact path that became read-only.")
-    lines.append("- Confirm which block device backs that path.")
-    lines.append("- Check filesystem errors from journal.")
-    lines.append("- Check SMART health, pending sectors, reallocated sectors, and CRC errors.")
-    lines.append("- Check whether Docker apps are writing to the affected path.")
-
-    lines.append("")
-    lines.append("### Do not do yet")
-    lines.append("- Do not force remount read-write until the affected device is confirmed.")
-    lines.append("- Do not run filesystem repair on a mounted filesystem.")
-    lines.append("- Do not delete app data or Docker folders.")
-    lines.append("- Do not recreate apps until the storage fault is understood.")
+    if unexpected:
+        lines.extend(["", "### Affected active mounts"])
+        for item in unexpected[:20]:
+            lines.append(f"- {item}")
+        lines.append(
+            "- These active writable-storage targets currently advertise "
+            "the `ro` mount option."
+        )
+        next_step = (
+            "Confirm the backing device, filesystem type, and recent filesystem "
+            "errors for the listed mount before attempting a remount or repair."
+        )
+        summary = (
+            f"{len(unexpected)} active DATA/media writable-storage mount(s) "
+            "currently advertise the read-only option."
+        )
+    else:
+        lines.extend([
+            "",
+            "- No active DATA or media writable-storage mount currently "
+            "advertises the `ro` option.",
+        ])
+        next_step = (
+            "No read-only mount repair is indicated by this snapshot. If an "
+            "application still cannot write, check its bind mount, permissions, "
+            "and container-visible path."
+        )
+        summary = (
+            "Structured active-mount evidence shows no unexpectedly read-only "
+            "DATA or media writable-storage mount."
+        )
 
     return {
         "lines": lines,
-        "next_step": "Confirm the exact read-only mount path, backing device, filesystem type, and recent filesystem errors before repair.",
-        "forum_summary": "Read-only evidence exists, but the exact root cause still needs confirmation from mount, device, filesystem, SMART, and journal evidence.",
+        "next_step": next_step,
+        "forum_summary": summary,
     }

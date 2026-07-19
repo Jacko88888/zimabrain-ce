@@ -338,7 +338,7 @@ def answer_smart_health(question: str, bundle: dict | None = None) -> SmartLayer
         direct = "SMART/NVMe evidence found disk health risk indicators that need attention."
     elif warning:
         status = "PARTIALLY VERIFIED"
-        title = "✅ PARTIALLY VERIFIED"
+        title = "⚠️ PARTIALLY VERIFIED"
         direct = "SMART/NVMe evidence does not show confirmed media failure, but warnings, limited SMART visibility, or unverifiable devices were found."
     else:
         status = "VERIFIED"

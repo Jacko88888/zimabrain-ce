@@ -98,6 +98,28 @@ def answer(question, bundle):
         TREND_DB_PATH, limit=20
     ) if scan else []
     grouped = _group(events)
+    q = str(question or "").lower()
+    disk_trend_focus = any(
+        term in q
+        for term in (
+            "smart", "nvme", "crc", "media-error", "media error",
+            "unsafe-shutdown", "unsafe shutdown", "disk counter",
+            "drive counter",
+        )
+    )
+    update_focus = (
+        any(
+            term in q
+            for term in ("update", "updated", "upgrade", "zimaos")
+        )
+        and any(
+            term in q
+            for term in (
+                "after", "changed", "change", "compare",
+                "baseline", "since", "regression", "problem",
+            )
+        )
+    )
 
     out = [
         "### ZimaBrain Answer", "", "## ❓ Question asked",
@@ -136,6 +158,153 @@ def answer(question, bundle):
     historical = grouped.get("historical_stable", [])
     changed = grouped.get("changed", []) + grouped.get("counter_reset", [])
 
+    disk_events = [
+        event for event in events
+        if event.get("category") in {"smart", "nvme"}
+    ]
+    increased_disk_events = [
+        event for event in disk_events
+        if event.get("classification") in {"worsening", "new_issue"}
+    ]
+
+    if increased_disk_events:
+        disk_trend_assessment = (
+            f"{len(increased_disk_events)} tracked SMART/NVMe signal(s) "
+            "increased or became newly actionable in the latest scan."
+        )
+    elif disk_events:
+        disk_trend_assessment = (
+            "No tracked SMART/NVMe error counter increased in the latest "
+            "comparison."
+        )
+    else:
+        disk_trend_assessment = (
+            "No comparable SMART/NVMe counter history was recorded."
+        )
+
+    if disk_trend_focus:
+        out.extend([
+            f"- Latest detailed scan: #{scan['id']} `{scan['created_at']}`",
+            f"- SMART/NVMe trend assessment: {disk_trend_assessment}",
+            "",
+            "#### Relevant SMART/NVMe changes",
+        ])
+
+        relevant = [
+            event for event in disk_events
+            if event.get("classification") in {
+                "worsening", "new_issue", "recovered", "counter_reset"
+            }
+        ]
+
+        if relevant:
+            for event in relevant[:20]:
+                out.append(f"- {event['message']}")
+        else:
+            out.append(
+                "- No new, worsening, recovered, or reset SMART/NVMe "
+                "counter transition was recorded."
+            )
+
+        out.extend([
+            "",
+            "#### Next safest step",
+            "- Act on a disk counter only when it increases, becomes newly "
+            "actionable, or combines with current SMART/NVMe failure evidence.",
+            "",
+            "#### Forum-ready summary",
+            f"SMART/NVMe timeline result: {disk_trend_assessment}",
+        ])
+        return "\n".join(out)
+
+    if update_focus:
+        current_release = update_history.get("current", {})
+        transitions = update_history.get("transitions", [])
+
+        if transitions:
+            latest = transitions[0]
+            issues = latest.get("issues", [])
+            recoveries = latest.get("recoveries", [])
+
+            if issues:
+                assessment = (
+                    f"A recorded system transition coincides with "
+                    f"{len(issues)} new or worsening signal(s), but timing "
+                    "alone does not prove the update caused them."
+                )
+            elif recoveries:
+                assessment = (
+                    "A recorded system transition coincides with recovery "
+                    "signals and no captured new/worsening signal."
+                )
+            else:
+                assessment = (
+                    "A system transition was recorded without a captured "
+                    "new, worsening, or recovered health signal."
+                )
+        else:
+            assessment = (
+                "No recorded ZimaOS version, build, kernel, or RAUC-slot "
+                "transition is available, so an update regression cannot "
+                "be established from the timeline."
+            )
+
+        out.extend([
+            f"- Update comparison assessment: {assessment}",
+            "",
+            "#### ZimaOS update / regression timing",
+        ])
+
+        if current_release:
+            out.append(
+                "- Current recorded release: "
+                f"ZimaOS {current_release.get('os_version', 'unknown')}; "
+                f"build {current_release.get('build_date', 'unknown')}; "
+                f"kernel {current_release.get('kernel', 'unknown')}; "
+                f"slot {current_release.get('rauc_booted_slot', 'unknown')}."
+            )
+
+        if transitions:
+            for transition in transitions[:5]:
+                changes = "; ".join(
+                    f"{item['label']}: "
+                    f"{item['previous']} → {item['current']}"
+                    for item in transition.get("changes", [])
+                )
+                out.append(
+                    f"- Scan #{transition['scan_id']} "
+                    f"`{transition['created_at']}`: {changes}"
+                )
+
+                for issue in transition.get("issues", [])[:5]:
+                    out.append(
+                        f"  New/worsening signal: {issue['message']}"
+                    )
+
+                for recovery in transition.get("recoveries", [])[:5]:
+                    out.append(
+                        f"  Recovery signal: {recovery['message']}"
+                    )
+
+                out.append(
+                    f"  Important: "
+                    f"{transition.get('causality_note', '')}"
+                )
+        else:
+            out.append("- No comparable update transition was recorded.")
+
+        out.extend([
+            "",
+            "#### Next safest step",
+            "- Compare the first affected scan with the recorded release, "
+            "kernel, slot, and exact new/worsening signals before "
+            "attributing the problem to an update.",
+            "",
+            "#### Forum-ready summary",
+            f"Update timeline result: {assessment}",
+        ])
+        return "\n".join(out)
+
     out.extend([
         f"- Latest detailed scan: #{scan['id']} `{scan['created_at']}`",
         f"- Individually tracked observations: {scan['observation_count']}",
@@ -143,8 +312,13 @@ def answer(question, bundle):
         f"- New issues: {len(new_issues)}",
         f"- Persistent issue states: {len(persistent)}",
         f"- Recovered signals: {len(recovered)}",
-        f"- Historical values with no increase: {len(historical)}", "",
+        f"- Historical values with no increase: {len(historical)}",
     ])
+    if disk_trend_focus:
+        out.append(
+            f"- SMART/NVMe trend assessment: {disk_trend_assessment}"
+        )
+    out.append("")
 
     _add_items(out, "Worsening conditions", worsening,
                "No tracked counter increased since the previous scan.")

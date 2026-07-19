@@ -419,37 +419,48 @@ def answer(bundle, question=""):
             }
 
         lines.append("")
-        lines.append("### Verification result")
-        lines.append("- NOT VERIFIED by ZimaBrain.")
-        lines.append("- NOT confirmed in the official ZimaOS manual.")
-        lines.append("- NOT confirmed as available in the local ZimaOS/CasaOS app-store index.")
-        lines.append("- No local Docker/container evidence was found for this app.")
-        lines.append("- ZimaBrain will not present this as a verified install guide.")
+        lines.append("### GENERIC INSTALL CHECKLIST")
+        lines.append(
+            f"- Requested app `{generic_app}` has not been verified against "
+            "a dedicated ZimaBrain profile."
+        )
+        lines.append(
+            "- The following is a cautious generic workflow, not a claim that "
+            "the app exists in the ZimaOS App Store."
+        )
+        lines.append(
+            "- Confirm the official project and trusted container/Compose "
+            "source before using any image, port, or volume."
+        )
         lines.append("")
 
-        lines.append("### What this means")
-        lines.append("- Treat this as an unverified custom app request.")
-        lines.append("- Do not assume it is supported by ZimaOS or available in the App Store.")
-        lines.append("- Only proceed with custom Docker/Compose if the user accepts the risk and provides a trusted source.")
-        lines.append("")
+        lines.append("### Generic installation steps")
+        for item in _generic_install_steps(generic_app):
+            lines.append(f"- {item}")
 
-        lines.append("### Evidence needed before helping further")
-        lines.append("- Exact app name.")
-        lines.append("- Official project website or GitHub repository.")
-        lines.append("- Docker image or docker-compose.yml source.")
-        lines.append("- Required ports.")
-        lines.append("- Required volumes/AppData path.")
-        lines.append("- Whether it needs host networking, privileged mode, or docker.sock.")
-        lines.append("- Container logs if already attempted.")
-        lines.append("- Screenshot or exact error message.")
+        lines.append("")
+        lines.append("### Generic failure patterns")
+        for item in _generic_common_issues(generic_app):
+            lines.append(f"- {item}")
 
         return {
             "lines": lines,
-            "next_step": "Confirm the exact app name and trusted Docker/Compose source before giving install or repair steps.",
-            "forum_summary": "This app is not verified by ZimaBrain and is not confirmed available in the local app-store index or official ZimaOS manual. Treat it as an unverified custom Docker/Compose request and collect the exact source, ports, volumes, risk flags, and logs before helping further.",
-            "trust_state": "NOT VERIFIED",
-            "trust_title": "❌ NOT VERIFIED / NOT CONFIRMED AVAILABLE",
-            "trust_detail": "No dedicated verified profile, official manual guide, app-store match, or local Docker evidence was confirmed.",
+            "next_step": (
+                f"Confirm the official project and trusted Docker/Compose "
+                f"source for {generic_app} before installing it."
+            ),
+            "forum_summary": (
+                f"Generic install checklist for {generic_app}. The app has "
+                "not been verified against a dedicated ZimaBrain profile; "
+                "confirm its trusted source, ports, volumes, and risk flags."
+            ),
+            "trust_state": "PARTIALLY VERIFIED",
+            "trust_title": "⚠️ GENERIC INSTALL CHECKLIST",
+            "trust_detail": (
+                "The workflow is a verified generic safety checklist, but the "
+                "requested app itself has not been verified against a dedicated "
+                "profile or confirmed app-store entry."
+            ),
         }
 
     guide = GUIDES[app]

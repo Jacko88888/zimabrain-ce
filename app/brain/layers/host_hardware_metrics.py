@@ -14,6 +14,7 @@ def is_host_hardware_question(question):
         "cpu usage",
         "ram usage",
         "memory usage",
+        "memory pressure",
         "system load",
         "load average",
         "thermal",
@@ -55,6 +56,49 @@ def _memory_summary(text):
             swap = f"{used} MiB used / {total} MiB total ({pct:.1f}% used)"
 
     return mem, swap
+
+
+def _memory_pressure(text):
+    total = 0
+    available = 0
+    swap_total = 0
+    swap_used = 0
+
+    for line in str(text or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 7 and parts[0] == "Mem:":
+            total = int(parts[1])
+            available = int(parts[6])
+        elif len(parts) >= 4 and parts[0] == "Swap:":
+            swap_total = int(parts[1])
+            swap_used = int(parts[2])
+
+    if not total:
+        return (
+            "Memory pressure cannot be assessed because capacity evidence was not captured.",
+            "Not captured",
+        )
+
+    available_pct = available / total * 100
+    swap_pct = (swap_used / swap_total * 100) if swap_total else 0
+
+    if available_pct < 5 or swap_pct >= 80:
+        assessment = (
+            "High capacity pressure is indicated by very low available memory "
+            "or heavy swap consumption."
+        )
+    elif available_pct < 10 or swap_pct >= 50:
+        assessment = (
+            "Elevated capacity pressure is indicated; verify whether memory "
+            "availability continues falling or swap use continues increasing."
+        )
+    else:
+        assessment = (
+            "No high capacity pressure is indicated by the captured memory "
+            "availability and swap snapshot."
+        )
+
+    return assessment, f"{available} MiB ({available_pct:.1f}% of total)"
 
 
 def _load_summary(text):
@@ -103,6 +147,9 @@ def _summary(bundle):
     cpu_info = ev.get("cpu_info", "")
     cpu_usage = _cpu_usage(ev.get("cpu_usage", ""))
     mem, swap = _memory_summary(ev.get("memory", ""))
+    memory_pressure, memory_available = _memory_pressure(
+        ev.get("memory", "")
+    )
     load = _load_summary(ev.get("loadavg", ""))
 
     sensors = ev.get("sensors", "")
@@ -119,6 +166,8 @@ def _summary(bundle):
         "max_mhz": _lscpu_value(cpu_info, "CPU max MHz") or "Not captured",
         "cpu_usage": (cpu_usage + "%") if cpu_usage else "Not captured",
         "memory": mem or "Not captured",
+        "memory_available": memory_available,
+        "memory_pressure": memory_pressure,
         "swap": swap or "Not captured",
         "load": load or "Not captured",
         "max_temp": f"{max_temp:.1f}°C" if max_temp is not None else "Not captured",
@@ -130,50 +179,81 @@ def _summary(bundle):
 
 def answer(question, bundle):
     h = _summary(bundle)
+    q = str(question or "").lower()
+    memory_focus = any(
+        term in q for term in ("memory", "ram", "swap")
+    )
 
-    out = []
-    out.append("### ZimaBrain Answer")
-    out.append("")
-    out.append("## ❓ Question asked")
-    out.append(f"### {question.strip()}")
-    out.append("")
-    out.append("#### Verification status")
-    out.append("@@VERIFY:VERIFIED@@ ✅ VERIFIED FROM SAME-REPORT HOST EVIDENCE")
-    out.append("- This answer uses local host evidence collected from lscpu, /proc, thermal zones, and sensors when available.")
-    out.append("- Active layer: Host Hardware Metrics Layer")
-    out.append("- Layer file: `app/brain/layers/host_hardware_metrics.py`")
-    out.append("")
+    out = [
+        "### ZimaBrain Answer",
+        "",
+        "## ❓ Question asked",
+        f"### {question.strip()}",
+        "",
+        "#### Verification status",
+        "@@VERIFY:VERIFIED@@ ✅ VERIFIED FROM SAME-REPORT HOST EVIDENCE",
+        "- This answer uses current local host evidence.",
+        "- Active layer: Host Hardware Metrics Layer",
+        "- Layer file: `app/brain/layers/host_hardware_metrics.py`",
+        "",
+        "#### Direct answer / severity",
+    ]
 
-    out.append("#### Direct answer / severity")
-    out.append(f"- CPU: {h['model']}")
-    out.append(f"- CPU usage snapshot: {h['cpu_usage']}")
-    out.append(f"- Max captured temperature: {h['max_temp']}")
-    out.append(f"- Temperature status: {h['temp_status']}")
-    out.append("")
+    if memory_focus:
+        out.extend([
+            f"- Memory pressure assessment: {h['memory_pressure']}",
+            f"- Memory available: {h['memory_available']}",
+            f"- Memory: {h['memory']}",
+            f"- Swap: {h['swap']}",
+            f"- Load average 1/5/15 min: {h['load']}",
+            "",
+            "#### Next safest step",
+            "- No immediate memory action is required when availability "
+            "remains healthy and swap pressure is low. If slowness "
+            "continues, compare available memory, swap use, and the "
+            "largest memory-consuming processes while the symptom is active.",
+            "",
+            "#### Forum-ready summary",
+            "ZimaBrain assessed current memory availability, RAM use, "
+            "swap use, and system load without mixing unrelated "
+            "CPU-temperature details into the answer.",
+        ])
+        return "\n".join(out)
 
-    out.append("#### Host hardware metrics")
-    out.append(f"- Vendor: {h['vendor']}")
-    out.append(f"- Visible CPUs / threads: {h['cpus']}")
-    out.append(f"- Cores per socket: {h['cores']}")
-    out.append(f"- Threads per core: {h['threads']}")
-    out.append(f"- CPU max MHz: {h['max_mhz']}")
-    out.append(f"- Memory: {h['memory']}")
-    out.append(f"- Swap: {h['swap']}")
-    out.append(f"- Load average 1/5/15 min: {h['load']}")
-    out.append("")
+    out.extend([
+        f"- CPU: {h['model']}",
+        f"- CPU usage snapshot: {h['cpu_usage']}",
+        f"- Max captured temperature: {h['max_temp']}",
+        f"- Temperature status: {h['temp_status']}",
+        "",
+        "#### Host hardware metrics",
+        f"- Vendor: {h['vendor']}",
+        f"- Visible CPUs / threads: {h['cpus']}",
+        f"- Cores per socket: {h['cores']}",
+        f"- Threads per core: {h['threads']}",
+        f"- CPU max MHz: {h['max_mhz']}",
+        f"- Memory: {h['memory']}",
+        f"- Swap: {h['swap']}",
+        f"- Load average 1/5/15 min: {h['load']}",
+        "",
+        "#### Temperature evidence",
+    ])
 
-    out.append("#### Temperature evidence")
     for line in h["thermal_zones"].splitlines()[:12]:
         out.append(f"- {line}")
+
     if h["thermal_zones"] == "Not captured":
         out.append("- Not captured")
-    out.append("")
 
-    out.append("#### Next safest step")
-    out.append("- If temperatures look high, verify airflow, dust, fan speed, workload, and whether the reading is idle or under load before changing anything.")
-    out.append("")
-
-    out.append("#### Forum-ready summary")
-    out.append("ZimaBrain can now report host hardware metrics from local evidence, including CPU model, visible CPU/thread count, CPU usage snapshot, RAM/swap usage, load average, and captured thermal/sensor temperatures.")
+    out.extend([
+        "",
+        "#### Next safest step",
+        "- If temperatures look high, verify airflow, dust, fan speed, "
+        "workload, and whether the reading is idle or under load before "
+        "changing anything.",
+        "",
+        "#### Forum-ready summary",
+        "ZimaBrain reports current CPU, hardware, load, and thermal evidence.",
+    ])
 
     return "\n".join(out)

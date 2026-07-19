@@ -13,6 +13,13 @@ def is_global_question(question):
         "system summary",
         "overall health",
         "health summary",
+        "complete system-health assessment",
+        "complete system health assessment",
+        "complete health assessment",
+        "system health assessment",
+        "is my system healthy",
+        "summarize the health",
+        "summarise the health",
     ]
 
     return any(term in q for term in global_terms)

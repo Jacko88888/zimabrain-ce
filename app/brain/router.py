@@ -2,6 +2,8 @@ from pathlib import Path
 import json
 import re
 
+from brain import intent_policy
+
 try:
     from brain.app_aliases import alias_tokens
 except Exception:
@@ -9,6 +11,11 @@ except Exception:
 
 
 ALL_FLAGS = [
+    "comprehensive_health_question",
+    "host_hardware_question",
+    "trend_history_question",
+    "smart_health_question",
+    "hardware_compatibility_question",
     "dashboard_alert_question",
     "failed_unit_question",
     "crc_question",
@@ -222,6 +229,19 @@ def classify(question):
     has_gpu = bool(qt & GPU_WORDS)
     has_compare = bool(qt & COMPARE_WORDS)
     has_command = bool(qt & COMMAND_WORDS)
+
+    policy = intent_policy.classify(question)
+    if policy["route_flag"]:
+        _score(
+            candidates,
+            policy["route_flag"],
+            300.0,
+            [
+                f"policy:domain={policy['domain']}",
+                f"policy:task={policy['task']}",
+                f"policy:entity={policy['entity']}",
+            ],
+        )
 
     # Router v1.6.5 quick-question correction gates.
     # Based on real quick-question terminal test failures.
@@ -651,6 +671,19 @@ def classify(question):
     if any(t in q for t in known_app_terms) and any(w in q for w in app_setup_words):
         _score(candidates, "app_setup_playbook_question", 34.0, ["gate:known-zima-app-setup", "entity:app"])
 
+    # Multiple-interface and routing-conflict diagnostics.
+    if (
+        {"interface", "interfaces", "nic", "nics"} & qt
+        and {"route", "routes", "routing", "gateway"} & qt
+        and {"conflict", "conflicts", "multiple", "several"} & qt
+    ):
+        _score(
+            candidates,
+            "network_connectivity_question",
+            31.0,
+            ["gate:multi-interface-routing", "entity:network-routing"],
+        )
+
     # Additional diagnostic layers.
     # Real forum hard routes from search/referral data.
     # These are common user phrases that must not fall through to weak fallback or app-store index.
@@ -731,6 +764,21 @@ def classify(question):
     elif has_docker and ({"bind", "volume", "volumes", "mapping", "mount"} & qt):
         _score(candidates, "docker_bind_mount_question", 8.0, ["intent:verify", "entity:docker-bind"])
 
+    container_state_terms = {
+        "stopped", "unhealthy", "restarting"
+    } & qt
+
+    if (
+        {"container", "containers"} & qt
+        and len(container_state_terms) >= 2
+    ):
+        _score(
+            candidates,
+            "container_question",
+            30.0,
+            ["gate:combined-container-state", "entity:container-state"],
+        )
+
     if {"exited", "stopped", "dead"} & qt:
         _score(candidates, "exited_question", 8.5, ["intent:diagnose", "entity:container-state"])
 
@@ -749,6 +797,37 @@ def classify(question):
         _score(candidates, "report_comparison_question", 8.0, ["intent:compare", "entity:report"])
     if has_raid and not candidates:
         _score(candidates, "snapraid_question", 7.5, ["intent:verify", "entity:raid/pool"])
+
+    # Comprehensive whole-system health assessment.
+    comprehensive_health_intent = (
+        _contains_phrase(question, (
+            "complete system-health assessment",
+            "complete system health assessment",
+            "complete health assessment",
+            "system health assessment",
+            "summarize the health",
+            "summarise the health",
+            "is my system healthy",
+            "overall system health",
+            "overall health",
+            "health summary",
+            "system summary",
+            "full diagnosis",
+            "full report",
+        ))
+        or (
+            ("summarize" in qt or "summarise" in qt)
+            and "health" in qt
+            and ("system" in qt or "cube" in qt)
+        )
+    )
+    if comprehensive_health_intent:
+        _score(
+            candidates,
+            "comprehensive_health_question",
+            30.0,
+            ["gate:comprehensive-health", "entity:whole-system"],
+        )
 
     # Generic dashboard health.
     if {"alert", "alerts", "wrong", "problem", "problems", "health", "status"} & qt and not candidates:
@@ -775,6 +854,11 @@ def classify(question):
         confidence = 0.0
 
     label_map = {
+        "comprehensive_health_question": "comprehensive_health",
+        "host_hardware_question": "host_hardware_metrics",
+        "trend_history_question": "trend_history",
+        "smart_health_question": "smart_health",
+        "hardware_compatibility_question": "hardware_compatibility",
         "dashboard_alert_question": "dashboard_alerts",
         "failed_unit_question": "failed_units",
         "crc_question": "crc_errors",

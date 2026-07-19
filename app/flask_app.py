@@ -7,11 +7,15 @@ import os
 from pathlib import Path
 import subprocess
 import re
+import time
 from datetime import datetime
+from threading import Lock
 from flask import Flask, request, jsonify, Response, send_from_directory, session, redirect, abort, make_response
 from brain import render as brain_render
 from brain import answer_builder
 from brain import health_memory
+from brain import intent_policy
+from brain import question_memory
 import os
 import secrets
 import hmac
@@ -23,6 +27,8 @@ APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
 APP_VERSION = "v1.6.0-beta"
 DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
+QUESTION_MEMORY_DB_PATH = TREND_DB_PATH
+QUESTION_MEMORY_ENABLED = True
 
 app = Flask(__name__)
 
@@ -210,6 +216,9 @@ def setup_password():
 <!doctype html>
 <html>
 <head>
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="shortcut icon" type="image/png" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="apple-touch-icon" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
 <meta charset="utf-8">
 <title>ZimaBrain CE First Run Setup</title>
 <style>
@@ -259,6 +268,9 @@ def login():
 <!doctype html>
 <html>
 <head>
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="shortcut icon" type="image/png" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="apple-touch-icon" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
 <meta charset="utf-8">
 <title>ZimaBrain CE Login</title>
 <style>
@@ -300,6 +312,10 @@ def assets(filename):
 SESSION_HISTORY = []
 DASHBOARD_REPORT = ""
 DASHBOARD_STATUS = "Dashboard evidence not loaded yet."
+DASHBOARD_BUNDLE_CACHE = None
+DASHBOARD_BUNDLE_CACHE_AT = 0.0
+DASHBOARD_BUNDLE_CACHE_TTL = 120.0
+DASHBOARD_BUNDLE_CACHE_LOCK = Lock()
 
 
 def esc(value):
@@ -1501,6 +1517,39 @@ def collect_same_report_evidence():
         "failed_units": run_host_command("systemctl --failed --plain --no-pager --no-legend 2>/dev/null || true"),
         "active_services": run_host_command("systemctl list-units --type=service --state=running,failed --plain --no-pager --no-legend 2>/dev/null | head -220 || true", timeout=15),
         "service_hotlist": run_host_command("for u in zimaos-welcome.service systemd-networkd-wait-online.service systemd-networkd.service zima-cron-fix.service casaos-gateway.service casaos-user-service.service casaos-local-storage.service docker.service containerd.service; do echo \"===== $u =====\"; systemctl is-active \"$u\" 2>/dev/null || true; systemctl show \"$u\" -p Id -p ActiveState -p SubState -p Result -p MainPID -p ExecMainPID -p ExecMainStatus -p ExecMainStartTimestamp -p FragmentPath --no-pager 2>/dev/null || true; done", timeout=20),
+        "tailscale": run_host_command(
+            "echo HOST_SERVICE_STATE=$(systemctl is-active "
+            "tailscaled.service 2>/dev/null || true); "
+            "if command -v tailscale >/dev/null 2>&1; then "
+            "echo INSTALLATION=host; "
+            "echo ---TAILSCALE_STATUS---; "
+            "tailscale status 2>&1 | head -80; "
+            "echo ---TAILSCALE_IPV4---; "
+            "tailscale ip -4 2>&1 | head -10; "
+            "else "
+            "found=0; "
+            "for c in $(docker ps -aq --filter name=tailscale "
+            "2>/dev/null); do "
+            "found=1; "
+            "docker inspect --format "
+            "'INSTALLATION=container "
+            "CONTAINER_NAME={{.Name}} "
+            "CONTAINER_STATE={{.State.Status}} "
+            "RESTARTS={{.RestartCount}} "
+            "NETWORK_MODE={{.HostConfig.NetworkMode}}' "
+            "\"$c\" 2>/dev/null; "
+            "echo ---TAILSCALE_STATUS---; "
+            "docker exec \"$c\" tailscale status "
+            "2>&1 | head -80 || true; "
+            "echo ---TAILSCALE_IPV4---; "
+            "docker exec \"$c\" tailscale ip -4 "
+            "2>&1 | head -10 || true; "
+            "done; "
+            "[ \"$found\" = 1 ] || "
+            "echo 'TAILSCALE_INSTALLATION=not_found'; "
+            "fi",
+            timeout=15,
+        ),
         "process_top": run_host_command("ps -eo pid,ppid,comm,stat,pcpu,pmem,args --sort=-pcpu 2>/dev/null | head -25 || true", timeout=10),
         "io_top": run_host_command("if command -v pidstat >/dev/null 2>&1; then pidstat -d 1 1 2>/dev/null | sed -n '1,80p'; else echo 'pidstat not installed'; echo '---PROC_IO_TOP_APPROX---'; for p in /proc/[0-9]*; do pid=${p##*/}; comm=$(cat \"$p/comm\" 2>/dev/null || true); r=$(awk '/read_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); w=$(awk '/write_bytes/{print $2}' \"$p/io\" 2>/dev/null || echo 0); [ -n \"$comm\" ] && echo \"$r $w $pid $comm\"; done | sort -nrk1,1 -nrk2,2 | head -20; fi", timeout=20),
         "iostat_brief": run_host_command("if command -v iostat >/dev/null 2>&1; then iostat -dx 1 1 2>/dev/null | sed -n '1,100p'; else echo 'iostat not installed'; echo '---DISKSTATS---'; cat /proc/diskstats 2>/dev/null | head -60; fi", timeout=20),
@@ -1560,6 +1609,25 @@ done | head -120""",
         "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
         "auditd": run_host_command("systemctl is-active auditd.service 2>/dev/null || true; systemctl status auditd.service --no-pager 2>/dev/null | head -80; echo ---AUDIT_PATHS---; ls -ld /var/log/audit 2>/dev/null || true; ls -l /var/log/audit/audit.log 2>/dev/null || true", timeout=12),
         "self_docker_security": run_host_command("docker inspect zimabrain-ce --format 'User={{.Config.User}} Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}} SecurityOpt={{.HostConfig.SecurityOpt}} CapAdd={{.HostConfig.CapAdd}}' 2>/dev/null || true; docker inspect zimabrain-ce --format '{{range .Mounts}}{{if eq .Destination \"/var/run/docker.sock\"}}DockerSock={{.Source}}:{{.RW}}{{end}}{{end}}' 2>/dev/null || true"),
+        "ip_addr": run_host_command(
+            "ip -br -4 address show 2>&1 || true",
+            timeout=8,
+        ),
+        "ip_route": run_host_command(
+            "ip -4 route show table main 2>&1 || true; "
+            "echo ---RULES---; "
+            "ip -4 rule show 2>&1 || true; "
+            "echo ---ROUTE_GET---; "
+            "ip -4 route get 1.1.1.1 2>&1 || true",
+            timeout=8,
+        ),
+        "resolv": run_host_command(
+            "cat /etc/resolv.conf 2>&1 || true; "
+            "echo ---DNS_LOOKUP---; "
+            "timeout 3 getent ahostsv4 community.zimaspace.com "
+            "2>&1 | head -6 || true",
+            timeout=6,
+        ),
         "host_os": run_host_command("cat /etc/os-release 2>/dev/null || true"),
         "kernel": run_host_command("uname -r 2>/dev/null || true"),
         "uptime": run_host_command("uptime -p 2>/dev/null || true"),
@@ -2135,38 +2203,56 @@ def record_trend_snapshot(bundle):
 
 def dashboard_bundle():
     global DASHBOARD_REPORT, DASHBOARD_STATUS
+    global DASHBOARD_BUNDLE_CACHE, DASHBOARD_BUNDLE_CACHE_AT
 
-    if not DASHBOARD_REPORT.strip():
-        try:
-            DASHBOARD_REPORT = fetch_dashboard_report()
-            DASHBOARD_STATUS = f"Dashboard evidence loaded: {len(DASHBOARD_REPORT):,} characters."
-        except Exception as e:
-            DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
+    with DASHBOARD_BUNDLE_CACHE_LOCK:
+        now = time.monotonic()
+        cache_age = now - DASHBOARD_BUNDLE_CACHE_AT
 
-    alerts = parse_dashboard_alerts(DASHBOARD_REPORT)
-    disks = parse_dashboard_disks(DASHBOARD_REPORT)
-    exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
-    container_count = parse_dashboard_container_count(DASHBOARD_REPORT)
+        if (
+            DASHBOARD_BUNDLE_CACHE is not None
+            and cache_age < DASHBOARD_BUNDLE_CACHE_TTL
+        ):
+            return DASHBOARD_BUNDLE_CACHE
 
-    same_report_evidence = collect_same_report_evidence()
-    normalized = normalize_dashboard_evidence(alerts, disks, exited)
-    critical_findings = evaluate_critical_same_report(same_report_evidence)
+        if not DASHBOARD_REPORT.strip():
+            try:
+                DASHBOARD_REPORT = fetch_dashboard_report()
+                DASHBOARD_STATUS = (
+                    f"Dashboard evidence loaded: "
+                    f"{len(DASHBOARD_REPORT):,} characters."
+                )
+            except Exception as e:
+                DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"
 
-    bundle = {
-        "report": DASHBOARD_REPORT,
-        "status": DASHBOARD_STATUS,
-        "alerts": alerts,
-        "disks": disks,
-        "exited": exited,
-        "container_count": container_count,
-        "normalized": normalized,
-        "same_report_evidence": same_report_evidence,
-        "critical_findings": critical_findings,
-    }
+        alerts = parse_dashboard_alerts(DASHBOARD_REPORT)
+        disks = parse_dashboard_disks(DASHBOARD_REPORT)
+        exited = parse_dashboard_exited_containers(DASHBOARD_REPORT)
+        container_count = parse_dashboard_container_count(DASHBOARD_REPORT)
 
-    bundle["trend_snapshot"] = record_trend_snapshot(bundle)
+        same_report_evidence = collect_same_report_evidence()
+        normalized = normalize_dashboard_evidence(alerts, disks, exited)
+        critical_findings = evaluate_critical_same_report(
+            same_report_evidence
+        )
 
-    return bundle
+        bundle = {
+            "report": DASHBOARD_REPORT,
+            "status": DASHBOARD_STATUS,
+            "alerts": alerts,
+            "disks": disks,
+            "exited": exited,
+            "container_count": container_count,
+            "normalized": normalized,
+            "same_report_evidence": same_report_evidence,
+            "critical_findings": critical_findings,
+        }
+
+        bundle["trend_snapshot"] = record_trend_snapshot(bundle)
+
+        DASHBOARD_BUNDLE_CACHE = bundle
+        DASHBOARD_BUNDLE_CACHE_AT = time.monotonic()
+        return bundle
 
 
 
@@ -2646,15 +2732,97 @@ def simplify_mount_line(line):
 
 
 
+def _answer_section(answer, heading):
+    marker = f"#### {heading}"
+    start = str(answer or "").find(marker)
+    if start < 0:
+        return ""
+
+    content_start = start + len(marker)
+    remainder = str(answer or "")[content_start:]
+    next_heading = remainder.find("\n#### ")
+    if next_heading >= 0:
+        remainder = remainder[:next_heading]
+
+    return " ".join(
+        line.lstrip("- ").strip()
+        for line in remainder.splitlines()
+        if line.strip()
+    )[:2000]
+
+
+def _answer_verification_state(answer):
+    match = re.search(
+        r"@@VERIFY:(VERIFIED|PARTIALLY VERIFIED|NOT VERIFIED)@@",
+        str(answer or ""),
+    )
+    return match.group(1) if match else "UNKNOWN"
+
+
+def _answer_active_layer(answer):
+    match = re.search(
+        r"^- Active layer:\s*(.+)$",
+        str(answer or ""),
+        re.MULTILINE,
+    )
+    return match.group(1).strip() if match else "Unknown Layer"
+
+
+def _apply_question_memory(question, answer, bundle):
+    if not QUESTION_MEMORY_ENABLED:
+        return answer
+
+    trend = (bundle or {}).get("trend_snapshot", {}) or {}
+    memory_scan = trend.get("memory_scan", {}) or {}
+    scan_id = memory_scan.get("scan_id")
+
+    if not memory_scan.get("ok") or not scan_id:
+        return answer
+
+    policy = intent_policy.classify(question)
+    if policy.get("domain") == "unknown":
+        return answer
+
+    direct_answer = _answer_section(answer, "Direct answer / severity")
+    if not direct_answer:
+        return answer
+
+    try:
+        comparison = question_memory.record_and_compare(
+            policy["memory_key"],
+            question,
+            scan_id,
+            _answer_verification_state(answer),
+            _answer_active_layer(answer),
+            direct_answer,
+            QUESTION_MEMORY_DB_PATH,
+        )
+    except Exception:
+        return answer
+
+    lines = comparison.get("lines", [])
+    if not lines or "#### Previous answer comparison" in answer:
+        return answer
+
+    block = "\n".join(lines)
+    marker = "\n#### Next safest step"
+
+    if marker in answer:
+        return answer.replace(marker, f"\n\n{block}{marker}", 1)
+
+    return f"{answer.rstrip()}\n\n{block}"
+
+
 def answer_question(question):
     bundle = dashboard_bundle()
-    return answer_builder.answer_question(
+    answer = answer_builder.answer_question(
         question,
         bundle,
         build_verifier_summary,
         critical_badge,
         severity_dot,
     )
+    return _apply_question_memory(question, answer, bundle)
 
 
 
@@ -3010,6 +3178,9 @@ def index():
     return f"""<!doctype html>
 <html>
 <head>
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="shortcut icon" type="image/png" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="apple-touch-icon" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
 <meta charset="utf-8">
 <title>{APP_NAME}</title>
 <style>
@@ -3565,6 +3736,9 @@ def ask():
     return f"""<!doctype html>
 <html>
 <head>
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="shortcut icon" type="image/png" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="apple-touch-icon" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
 <meta charset="utf-8">
 <title>ZimaBrain Answer</title>
 <style>
@@ -3955,7 +4129,10 @@ def clear_session():
 @app.route("/session-full")
 def session_full():
     body = build_session_export()
-    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Brain Session</title>
+    return f"""<!doctype html><html><head>
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="shortcut icon" type="image/png" href="/assets/zimabrain-ce-logo.png?v=20260719-new">
+<link rel="apple-touch-icon" sizes="512x512" href="/assets/zimabrain-ce-logo.png?v=20260719-new"><meta charset="utf-8"><title>Brain Session</title>
 <style>body{{background:#080b10;color:#e8edf2;font-family:Arial,sans-serif;padding:24px;}}pre{{white-space:pre-wrap;background:#050814;border:1px solid #263241;border-radius:14px;padding:18px;}}
 
 </style>
@@ -4506,9 +4683,18 @@ def api_v1_ask():
 @app.route("/load-dashboard")
 def load_dashboard():
     global DASHBOARD_REPORT, DASHBOARD_STATUS
+    global DASHBOARD_BUNDLE_CACHE, DASHBOARD_BUNDLE_CACHE_AT
+
     try:
-        DASHBOARD_REPORT = fetch_dashboard_report()
-        DASHBOARD_STATUS = f"Dashboard evidence loaded: {len(DASHBOARD_REPORT):,} characters."
+        refreshed_report = fetch_dashboard_report()
+        with DASHBOARD_BUNDLE_CACHE_LOCK:
+            DASHBOARD_REPORT = refreshed_report
+            DASHBOARD_STATUS = (
+                f"Dashboard evidence loaded: "
+                f"{len(DASHBOARD_REPORT):,} characters."
+            )
+            DASHBOARD_BUNDLE_CACHE = None
+            DASHBOARD_BUNDLE_CACHE_AT = 0.0
         return jsonify({"ok": True, "status": DASHBOARD_STATUS})
     except Exception as e:
         DASHBOARD_STATUS = f"Dashboard evidence unavailable: {e}"

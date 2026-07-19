@@ -92,6 +92,8 @@ STOP_WORDS = {
     "permission", "port", "reboot", "restart", "route", "service", "share",
     "storage", "update", "volume", "zimaos", "check", "condition", "current",
     "determine", "diagnose", "diagnostic", "evidence", "explain", "finding",
+    "fictional", "imaginary", "nonexistent", "madeup",
+    "give", "provide", "show", "tell",
     "health", "healthy", "infer", "issue", "problem", "report", "running",
     "restarting", "state", "status", "symptom", "verify", "zimabrain",
 }

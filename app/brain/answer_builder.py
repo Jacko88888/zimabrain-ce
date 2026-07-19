@@ -1,10 +1,12 @@
 from brain import answer_modes
+from brain import intent_policy
 from brain import router
 from brain.layers import storage_mounts
 from brain.layers import disk_health
 from brain.layers import failed_units
 from brain.layers import snapraid_mergerfs
 from brain.layers import dashboard_alerts
+from brain.layers import comprehensive_health
 from brain.layers import disk_crc
 from brain.layers import filesystem_usage
 from brain.layers import disk_commands
@@ -169,23 +171,31 @@ def _verification_block(status, active_layer, active_layer_file):
 
 def answer_question(question, bundle, build_verifier_summary, critical_badge, severity_dot):
     q = (question or "").strip().lower()
+    policy = intent_policy.classify(question)
+    handler = policy["handler"]
 
     if trend_alerts.is_alert_question(question):
         return trend_alerts.answer(question, bundle)
 
-    if trend_history.is_trend_question(question):
+    if handler == "trend_history" or (
+        handler == "" and trend_history.is_trend_question(question)
+    ):
         return trend_history.answer(question, bundle)
 
-    if host_hardware_metrics.is_host_hardware_question(question):
+    if handler == "host_hardware" or (
+        handler == "" and host_hardware_metrics.is_host_hardware_question(question)
+    ):
         return host_hardware_metrics.answer(question, bundle)
 
-    smart_result = answer_smart_health(question, bundle)
-    if smart_result.matched:
-        return smart_result.answer
+    if handler == "smart_health" or handler == "":
+        smart_result = answer_smart_health(question, bundle)
+        if smart_result.matched:
+            return smart_result.answer
 
-    hardware_result = answer_hardware_compatibility(question)
-    if hardware_result.matched:
-        return hardware_result.answer
+    if handler == "hardware_compatibility":
+        hardware_result = answer_hardware_compatibility(question)
+        if hardware_result.matched:
+            return hardware_result.answer
 
     route = router.classify(question)
     n = bundle["normalized"]
@@ -201,7 +211,10 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     out.append("@@VERIFICATION_BLOCK@@")
     out.append("")
 
-    if not focused_answer:
+    if (
+        not focused_answer
+        and not route.get("comprehensive_health_question", False)
+    ):
         out.extend(build_verifier_summary(bundle))
         out.append("")
 
@@ -232,6 +245,7 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
                 final.append(line)
         return "\n".join(final)
 
+    comprehensive_health_question = route.get("comprehensive_health_question", False)
     dashboard_alert_question = route.get("dashboard_alert_question", False)
     failed_unit_question = route.get("failed_unit_question", False)
     crc_question = route.get("crc_question", False)
@@ -384,6 +398,17 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
                 next_step = "Ask for a fresh export while the issue is happening, then check active services, pidstat/iostat evidence, and failed units together."
                 forum_summary = "No matching same-report service/activity finding was detected for this question. Collect a fresh export while the symptom is active."
 
+    elif comprehensive_health_question:
+        layer = comprehensive_health.answer(bundle)
+        active_layer = "Comprehensive System Health Layer"
+        active_layer_file = "app/brain/layers/comprehensive_health.py"
+        out.extend(layer["lines"])
+        next_step = layer["next_step"]
+        forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
+
     elif failed_unit_question:
         layer = failed_units.answer(bundle, critical_badge)
         active_layer = "Failed Units Layer"
@@ -417,12 +442,15 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         forum_summary = layer["forum_summary"]
 
     elif exited_question or container_question:
-        layer = containers.answer(bundle)
+        layer = containers.answer(bundle, question)
         active_layer = "Containers Layer"
         active_layer_file = "app/brain/layers/containers.py"
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
 
     elif smart_trend_question:
         layer = smart_trend.answer(bundle)
@@ -511,6 +539,9 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
 
     elif smb_shares_question:
         layer = smb_shares_diag.answer(bundle, question)

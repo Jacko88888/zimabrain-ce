@@ -1,28 +1,63 @@
 def answer(bundle, critical_badge):
-    lines = []
-    lines.append("Failed service / systemd unit check")
-    lines.append("")
+    evidence = bundle.get("same_report_evidence", {}) or {}
+    raw = str(evidence.get("failed_units", "") or "")
 
-    failed_items = [
-        item for item in bundle.get("critical_findings", [])
-        if "failed" in item.get("title", "").lower()
-        or "failed" in (item.get("detail") or item.get("evidence") or "").lower()
+    failed_lines = []
+
+    for raw_line in raw.splitlines():
+        line = " ".join(raw_line.split())
+        low = line.lower()
+
+        if not line:
+            continue
+        if (
+            "0 loaded units listed" in low
+            or "no units listed" in low
+        ):
+            continue
+
+        failed_lines.append(line)
+
+    lines = [
+        "Failed service / systemd unit check",
+        "",
+        "Confirmed:",
     ]
 
-    if failed_items:
-        lines.append("Confirmed:")
-        for item in failed_items:
-            detail = item.get("detail") or item.get("evidence") or ""
-            lines.append(f"- {critical_badge(item['level'])}: {item['title']}")
-            lines.append(f"  Evidence: {detail}")
-            lines.append(f"  Meaning: {item.get('why', '')}")
-            lines.append(f"  Next safest step: {item.get('next', '')}")
+    if failed_lines:
+        lines.append(
+            f"- Failed-unit assessment: {len(failed_lines)} failed "
+            "unit(s) were captured by systemctl."
+        )
+
+        for line in failed_lines:
+            name = line.split()[0]
+            lines.append(f"- Failed unit: {name}")
+            lines.append(f"  Evidence: {line}")
+
+        next_step = (
+            "Inspect status and recent journal entries for the listed "
+            "failed unit before changing unrelated services or containers."
+        )
+        forum_summary = (
+            f"Current systemctl evidence contains {len(failed_lines)} "
+            "failed unit(s). Inspect those exact units first."
+        )
     else:
-        lines.append("Confirmed:")
-        lines.append("- No failed host units were detected by the current verifier evidence.")
+        lines.append(
+            "- Failed-unit assessment: no failed host unit was captured "
+            "by the current systemctl evidence."
+        )
+        next_step = (
+            "No failed-unit repair is indicated by this snapshot. "
+            "Recheck systemctl only if a service symptom is still active."
+        )
+        forum_summary = (
+            "Current systemctl evidence did not contain a failed host unit."
+        )
 
     return {
         "lines": lines,
-        "next_step": "Inspect only the failed unit shown in the report before changing unrelated services or containers.",
-        "forum_summary": "Confirmed: ZimaBrain checked failed host units from current verifier evidence. If a failed unit is shown, inspect that exact unit first and avoid changing unrelated Docker containers, mounts, or storage paths until the failed-unit evidence is understood.",
+        "next_step": next_step,
+        "forum_summary": forum_summary,
     }
