@@ -3,6 +3,8 @@ import shlex
 import sqlite3
 from datetime import datetime
 
+from brain import service_diagnostics
+
 
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 
@@ -216,12 +218,8 @@ def _container_observations(text):
     return observations
 
 
-def _related_service_name(unit):
-    if unit.endswith("-watchdog.service"):
-        return unit.replace("-watchdog.service", ".service")
-    if unit.endswith("-delay.service"):
-        return unit.replace("-delay.service", ".service")
-    return ""
+def _related_service_name(unit, properties=None):
+    return service_diagnostics.related_service_name(unit, properties)
 
 
 def _service_observations(evidence):
@@ -291,6 +289,66 @@ def _service_observations(evidence):
             "evidence": line,
         }
 
+    failed_details = evidence.get("failed_unit_details", []) or []
+    if not isinstance(failed_details, list):
+        failed_details = []
+
+    for detail in failed_details:
+        if not isinstance(detail, dict):
+            continue
+        unit = str(detail.get("unit", "") or "").strip()
+        props = detail.get("properties", {}) or {}
+        if unit and detail.get("evidence_available"):
+            states[unit] = {
+                "active": str(props.get("ActiveState", "unknown") or "unknown").lower(),
+                "sub": str(props.get("SubState", "unknown") or "unknown").lower(),
+                "evidence": str(detail.get("raw_show", "") or detail.get("failed_line", "")),
+                "properties": props,
+            }
+
+        primary = detail.get("primary") or {}
+        primary_props = primary.get("properties", {}) or {}
+        primary_unit = str(primary.get("unit", "") or "").strip()
+        if primary_unit and primary.get("evidence_available"):
+            states[primary_unit] = {
+                "active": str(primary_props.get("ActiveState", "unknown") or "unknown").lower(),
+                "sub": str(primary_props.get("SubState", "unknown") or "unknown").lower(),
+                "evidence": str(primary.get("raw_show", "") or ""),
+                "properties": primary_props,
+            }
+
+        assessment = service_diagnostics.assess_detail(detail)
+        for item in assessment["missing"]:
+            observations.append(_observation(
+                "service_exec", f"{unit}:{item['path']}", item["path"],
+                "missing_required_file", numeric_value=1, kind="state",
+                unit="boolean", issue=True,
+                evidence=f"unit={unit} source={item['source']} path={item['path']}",
+            ))
+        for item in assessment["non_executable"]:
+            observations.append(_observation(
+                "service_exec", f"{unit}:{item['path']}", item["path"],
+                "required_file_not_executable", numeric_value=1, kind="state",
+                unit="boolean", issue=True,
+                evidence=f"unit={unit} source={item['source']} path={item['path']}",
+            ))
+        if assessment["status_203"]:
+            observations.append(_observation(
+                "service_exec", unit, unit, "status_203_exec",
+                numeric_value=1, kind="state", unit="boolean", issue=True,
+                evidence=str(detail.get("journal", "") or detail.get("raw_show", ""))[:1200],
+            ))
+        if assessment["is_helper"]:
+            observations.append(_observation(
+                "service", unit, unit, "primary_outage",
+                kind="state", text_value=assessment["current_outage"],
+                issue=assessment["current_outage"] == "yes",
+                evidence=(
+                    f"primary={assessment['primary_unit']} "
+                    f"state={assessment['primary_state']}/{assessment['primary_substate']}"
+                ),
+            ))
+
     for unit, state in states.items():
         active = state["active"]
         sub = state["sub"]
@@ -299,7 +357,7 @@ def _service_observations(evidence):
             kind="state", issue=active == "failed" or sub == "failed",
             evidence=state["evidence"],
         ))
-        primary = _related_service_name(unit)
+        primary = _related_service_name(unit, state.get("properties"))
         if primary:
             observations.extend([
                 _observation(
@@ -820,6 +878,11 @@ def _add_missing_states(con, observations):
             FROM health_observations
             WHERE (category = 'service' AND metric = 'failed')
                OR (category = 'mount' AND metric = 'present')
+               OR (category = 'service_exec' AND metric IN (
+                    'missing_required_file',
+                    'required_file_not_executable',
+                    'status_203_exec'
+               ))
             GROUP BY category, entity_key, metric
         ) latest
           ON latest.category = o.category
@@ -1538,7 +1601,8 @@ def system_update_history(db_path=TREND_DB_PATH, limit=10):
                 FROM health_events
                 WHERE scan_id IN ({event_placeholders})
                   AND classification IN (
-                      'new_issue', 'worsening', 'recovered'
+                      'new_issue', 'worsening', 'recovered',
+                      'historical_baseline'
                   )
                   AND NOT (
                       category = 'system'
@@ -1551,6 +1615,10 @@ def system_update_history(db_path=TREND_DB_PATH, limit=10):
             issues = [
                 item for item in related
                 if item["classification"] in ("new_issue", "worsening")
+                or (
+                    item["classification"] == "historical_baseline"
+                    and item["category"] == "service_exec"
+                )
             ]
             recoveries = [
                 item for item in related
@@ -1560,7 +1628,7 @@ def system_update_history(db_path=TREND_DB_PATH, limit=10):
             if issues:
                 classification = "post_update_attention"
                 assessment = (
-                    f"{len(issues)} new or worsening signal(s) appeared "
+                    f"{len(issues)} newly observed or worsening signal(s) appeared "
                     "in the transition scan or the immediately following scan."
                 )
             elif recoveries:
@@ -1726,10 +1794,28 @@ def service_boot_histories(db_path=TREND_DB_PATH, limit=20):
 def helper_service_correlations(db_path=TREND_DB_PATH, limit=20):
     histories = service_boot_histories(db_path, limit)
     by_name = {item["entity_name"]: item for item in histories}
+    with sqlite3.connect(db_path, timeout=5) as con:
+        rows = con.execute("""
+            SELECT o.entity_key, o.text_value
+            FROM health_observations o
+            JOIN (
+                SELECT entity_key, MAX(scan_id) AS scan_id
+                FROM health_observations
+                WHERE category = 'service' AND metric = 'primary_service'
+                GROUP BY entity_key
+            ) latest
+              ON latest.entity_key = o.entity_key
+             AND latest.scan_id = o.scan_id
+            WHERE o.category = 'service' AND o.metric = 'primary_service'
+        """).fetchall()
+    stored_primary = {str(unit): str(primary) for unit, primary in rows if primary}
     results = []
 
     for helper in histories:
-        primary_name = _related_service_name(helper["entity_name"])
+        primary_name = (
+            stored_primary.get(helper["entity_name"])
+            or _related_service_name(helper["entity_name"])
+        )
         if not primary_name:
             continue
         primary = by_name.get(primary_name)
@@ -1737,13 +1823,17 @@ def helper_service_correlations(db_path=TREND_DB_PATH, limit=20):
         primary_healthy = bool(
             primary and primary["current_state"].startswith("active/")
         )
+        primary_failed = bool(
+            primary and primary["current_state"].startswith("failed/")
+        )
 
         if helper_failed and primary_healthy:
             if helper["classification"] == "persistent_fault":
                 classification = "known_historical_helper_issue"
                 message = (
                     f"{helper['entity_name']} repeatedly failed across distinct boots, "
-                    f"while {primary_name} remains active. Main service remains healthy."
+                    f"while {primary_name} remains active. No current primary-service "
+                    "outage was verified from the recorded state evidence."
                 )
             else:
                 classification = "helper_issue_primary_healthy"
@@ -1751,11 +1841,17 @@ def helper_service_correlations(db_path=TREND_DB_PATH, limit=20):
                     f"{helper['entity_name']} is failed, while {primary_name} remains "
                     "active. More distinct boots are needed before calling it historical."
                 )
+        elif helper_failed and primary_failed:
+            classification = "helper_and_primary_failed"
+            message = (
+                f"{helper['entity_name']} and {primary_name} are both currently failed. "
+                "A current primary-service outage is indicated."
+            )
         elif helper_failed:
             classification = "helper_and_primary_attention"
             message = (
-                f"{helper['entity_name']} is failed and {primary_name} is not verified "
-                "as active in the same boot-aware history."
+                f"{helper['entity_name']} is failed, but current evidence for "
+                f"{primary_name} is incomplete. Primary-service state needs confirmation."
             )
         elif helper["issue_count"]:
             classification = "recovered_helper"

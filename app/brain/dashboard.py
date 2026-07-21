@@ -2,6 +2,8 @@ import urllib.request
 import subprocess
 import re
 
+from brain import service_diagnostics
+
 DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 DASHBOARD_REPORT = ""
 DASHBOARD_STATUS = "Dashboard evidence not loaded yet."
@@ -327,7 +329,7 @@ def run_host_command(command, timeout=12):
 
 
 def collect_same_report_evidence():
-    return {
+    evidence = {
         "failed_units": run_host_command("systemctl --failed --plain --no-pager --no-legend 2>/dev/null || true"),
         "active_services": run_host_command("systemctl list-units --type=service --state=running,failed --plain --no-pager --no-legend 2>/dev/null | head -220 || true", timeout=15),
         "service_hotlist": run_host_command("for u in zimaos-welcome.service systemd-networkd-wait-online.service systemd-networkd.service zima-cron-fix.service casaos-gateway.service casaos-user-service.service casaos-local-storage.service docker.service containerd.service; do echo \"===== $u =====\"; systemctl is-active \"$u\" 2>/dev/null || true; systemctl show \"$u\" -p Id -p ActiveState -p SubState -p Result -p MainPID -p ExecMainPID -p ExecMainStatus -p ExecMainStartTimestamp -p FragmentPath --no-pager 2>/dev/null || true; done", timeout=20),
@@ -350,6 +352,14 @@ def collect_same_report_evidence():
         "zfw_chains": run_host_command("iptables -S ZFW-IN 2>/dev/null || true; iptables -S ZFW-IN6 2>/dev/null || true; iptables -S DOCKER-USER 2>/dev/null || true"),
         "auditd": run_host_command("systemctl is-active auditd.service 2>/dev/null || true; systemctl status auditd.service --no-pager 2>/dev/null | head -80; echo ---AUDIT_PATHS---; ls -ld /var/log/audit 2>/dev/null || true; ls -l /var/log/audit/audit.log 2>/dev/null || true", timeout=12),
     }
+    evidence["failed_unit_details"] = service_diagnostics.collect_failed_unit_details(
+        evidence.get("failed_units", ""),
+        run_host_command,
+    )
+    evidence["failed_unit_details_collected"] = not str(
+        evidence.get("failed_units", "") or ""
+    ).startswith("ERROR:")
+    return evidence
 
 
 def evaluate_critical_same_report(evidence):
@@ -573,13 +583,19 @@ def evaluate_critical_same_report(evidence):
             "next": "Verify ZimaOS local-storage state before treating this as an app problem.",
         })
 
-    if failed.strip():
+    failed_detail_assessments = service_diagnostics.assess_details(
+        evidence.get("failed_unit_details", []) or []
+    )
+    if failed_detail_assessments:
+        for assessment in failed_detail_assessments:
+            findings.append(service_diagnostics.critical_finding(assessment))
+    elif failed.strip():
         findings.append({
             "level": "YELLOW",
-            "title": "Failed systemd unit detected",
+            "title": "Failed systemd unit detected; detailed correlation unavailable",
             "detail": failed.splitlines()[0],
-            "why": "A failed host unit can indicate a broken scheduled task, service, or maintenance layer.",
-            "next": "Inspect the exact failed unit before changing anything.",
+            "why": "The failed-unit list is present, but related-service and executable-path evidence is incomplete.",
+            "next": "Collect detailed failed-unit evidence before changing anything.",
         })
 
     if "snapraid-sync.service" in low_failed and "failed" in low_failed:
@@ -822,18 +838,12 @@ def detect_docker_name_mismatch(execstart):
     return {"old_name": target, "possible_names": []}
 
 
-def related_service_name(unit):
-    if not unit:
-        return ""
-    if unit.endswith("-watchdog.service"):
-        return unit.replace("-watchdog.service", ".service")
-    if unit.endswith("-delay.service"):
-        return unit.replace("-delay.service", ".service")
-    return ""
+def related_service_name(unit, properties=None):
+    return service_diagnostics.related_service_name(unit, properties)
 
 
-def related_service_state(unit):
-    related = related_service_name(unit)
+def related_service_state(unit, properties=None):
+    related = related_service_name(unit, properties)
     if not related:
         return None
 
@@ -924,11 +934,12 @@ def build_failed_unit_finding(line):
         evidence_parts.append("missing_paths=" + ", ".join(missing_paths))
 
     title = "Failed systemd unit detected"
+    level = "YELLOW"
     why = "A failed host unit can indicate a broken scheduled task or system helper."
     next_step = "Inspect only this failed unit before changing unrelated services."
 
     docker_mismatch = detect_docker_name_mismatch(execstart)
-    related_state = related_service_state(unit)
+    related_state = related_service_state(unit, props)
 
     missing_os_paths = [
         p for p in missing_paths
@@ -967,6 +978,21 @@ def build_failed_unit_finding(line):
         )
         why = "The failed unit appears to be a helper/watchdog, while the main related service is currently active."
         next_step = "Verify whether the helper failure is historical before restarting the main service."
+    elif related_state and related_state.get("active") == "failed":
+        level = "RED"
+        title = "Helper and related primary service are both failed"
+        evidence_parts.append(
+            "related_service="
+            + related_state["unit"]
+            + " failed/"
+            + related_state.get("sub", "")
+        )
+        why = "Both the helper and its related primary service are failed, indicating a current outage."
+        next_step = "Inspect the primary service and helper journals before attempting any restart."
+    elif related_service_name(unit, props):
+        title = "Failed helper unit; primary-service evidence unavailable"
+        why = "The helper failure is verified, but the current related primary-service state could not be confirmed."
+        next_step = "Confirm the related primary service state before assigning outage severity."
     elif unit and "cron" in (unit + " " + execstart).lower():
         cron_ps = run_host_shell("ps -ef | grep -E '[c]rond|[c]ron' || true", timeout=8)
         if cron_ps.strip():
@@ -978,7 +1004,7 @@ def build_failed_unit_finding(line):
     evidence = " | ".join(evidence_parts)
 
     return {
-        "level": "YELLOW",
+        "level": level,
         "title": title,
         "evidence": evidence,
         "detail": evidence,

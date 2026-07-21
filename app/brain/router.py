@@ -353,6 +353,35 @@ def classify(question):
     if ("failed" in qt and ("unit" in qt or "systemd" in qt or "service" in qt)):
         _score(candidates, "failed_unit_question", 23.0, ["gate:evidence-explain", "entity:failed-unit"])
 
+    service_execution_intent = bool(
+        (
+            {"helper", "helpers", "watchdog", "watchdogs"} & qt
+            and {
+                "failed", "failing", "degraded", "missing", "absent",
+                "primary", "related", "outage", "recovered", "historical",
+            } & qt
+        )
+        or (
+            {"executable", "executables", "execstart", "script", "scripts", "exec"} & qt
+            and {"missing", "absent", "broken", "failed", "failing", "permission", "permissions", "203"} & qt
+        )
+        or (
+            {"executable", "executables", "execstart", "script", "scripts"} & qt
+            and any(phrase in ql for phrase in (
+                "not found", "cannot be found", "can't be found",
+                "cannot locate", "can't locate",
+            ))
+        )
+        or ("203" in qt and ("exec" in qt or "systemd" in qt or "service" in qt))
+    )
+    if service_execution_intent:
+        _score(
+            candidates,
+            "failed_unit_question",
+            28.0,
+            ["gate:service-execution", "entity:failed-helper-executable"],
+        )
+
     # General slow ZimaOS diagnostic.
     if ("slow" in qt or "sluggish" in qt or "lag" in qt) and ("zimaos" in qt or "system" in qt):
         _score(candidates, "network_connectivity_question", 20.0, ["gate:general-diagnostic", "entity:slow-system"])

@@ -410,12 +410,15 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         trust_detail_override = layer.get("trust_detail")
 
     elif failed_unit_question:
-        layer = failed_units.answer(bundle, critical_badge)
+        layer = failed_units.answer(bundle, critical_badge, question)
         active_layer = "Failed Units Layer"
         active_layer_file = "app/brain/layers/failed_units.py"
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
 
     elif dashboard_alert_question:
         layer = dashboard_alerts.answer(bundle, severity_dot)

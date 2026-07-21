@@ -223,6 +223,50 @@ def classify(question):
 
     service_terms = {"service", "services", "unit", "units", "systemd"}
     failed_terms = {"failed", "failing", "degraded", "broken"}
+    helper_terms = {
+        "helper", "helpers", "watchdog", "watchdogs", "monitor", "monitors"
+    }
+    executable_terms = {
+        "executable", "executables", "script", "scripts", "execstart", "exec"
+    }
+    execution_failure_terms = {
+        "missing", "absent", "broken", "failed", "failing", "invalid",
+        "permission", "permissions", "203"
+    }
+    primary_state_terms = {
+        "primary", "related", "degraded", "outage", "active", "inactive",
+        "running", "recovered", "historical"
+    }
+
+    if (
+        (tokens & helper_terms and tokens & (failed_terms | primary_state_terms))
+        or (tokens & executable_terms and tokens & execution_failure_terms)
+        or (
+            tokens & executable_terms
+            and any(phrase in q for phrase in (
+                "not found", "cannot be found", "can't be found",
+                "cannot locate", "can't locate",
+            ))
+        )
+        or ("203" in tokens and ("exec" in tokens or tokens & service_terms))
+        or (
+            tokens & helper_terms
+            and tokens & {"file", "files", "executable", "executables"}
+            and tokens & {"missing", "absent", "broken"}
+        )
+    ):
+        execution_focus = bool(
+            tokens & executable_terms
+            or tokens & {"file", "files", "missing", "absent", "203"}
+        )
+        entity = "execution" if execution_focus else "helper-primary"
+        return _result(
+            "services", "diagnose", entity,
+            "failed_units",
+            "failed_unit_question",
+            "failed_units",
+        )
+
     if tokens & service_terms and tokens & failed_terms:
         return _result(
             "services", "status", "failed",
