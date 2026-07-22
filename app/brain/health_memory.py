@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime
 
 from brain import service_diagnostics
+from brain import rauc_diagnostics
+from brain import bind_mount_permissions
 
 
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
@@ -392,6 +394,51 @@ def _mount_observations(text):
     return observations
 
 
+def _bind_mount_permission_observations(evidence):
+    assessment = bind_mount_permissions.assess_evidence(
+        evidence.get("bind_mount_permissions", {}) or {}
+    )
+    observations = []
+    for record in assessment.get("records", []):
+        if record.get("role") not in {"media", "storage"}:
+            continue
+        container = record.get("container", "")
+        destination = record.get("destination", "")
+        if not container or not destination:
+            continue
+        entity_key = f"{container}:{destination}"
+        entity_name = f"{container} bind {destination}"
+        classification = record.get("classification", "evidence_incomplete")
+        observations.extend([
+            _observation(
+                "container_mount", entity_key, entity_name, "permission_state",
+                kind="state", text_value=classification,
+                issue=bool(record.get("issue")),
+                evidence=record.get("explanation", ""),
+            ),
+            _observation(
+                "container_mount", entity_key, entity_name, "permission_signature",
+                kind="identity",
+                text_value=bind_mount_permissions.permission_fingerprint(record),
+                evidence=(
+                    f"{record.get('source')} -> {destination}; "
+                    f"identity={record.get('effective_uid')}:{record.get('effective_gid')}"
+                ),
+            ),
+        ])
+        write_test = record.get("write_test", {}) or {}
+        if write_test.get("attempted"):
+            observations.append(_observation(
+                "container_mount", entity_key, entity_name, "write_test",
+                kind="state", text_value=write_test.get("result", "unknown"),
+                issue=str(write_test.get("result", "")).lower() not in {
+                    "success", "passed", "writable"
+                },
+                evidence=write_test.get("evidence", ""),
+            ))
+    return observations
+
+
 def _io_process_observations(text):
     aggregated = {}
     for raw in (text or "").splitlines():
@@ -475,16 +522,51 @@ def _system_observations(evidence):
             kind="identity", text_value=build_date, evidence=build_date,
         ))
     rauc = evidence.get("rauc", "") or ""
-    booted_match = re.search(
-        r"^Booted from:\s*(.+?)\s*$", rauc, re.MULTILINE
-    )
-    if booted_match:
-        booted_slot = booted_match.group(1).strip()
+    rauc_status = rauc_diagnostics.assess_status(rauc)
+    if rauc_status["evidence_available"]:
+        booted_slot = rauc_status["booted"].get("raw", "")
+    else:
+        booted_slot = ""
+    if booted_slot:
         observations.append(_observation(
             "system", "host", "ZimaOS host", "rauc_booted_slot",
             kind="identity", text_value=booted_slot,
-            evidence=booted_match.group(0).strip(),
+            evidence=f"Booted from: {booted_slot}",
         ))
+    activated_slot = rauc_status.get("activated", {}).get("raw", "")
+    if activated_slot:
+        observations.append(_observation(
+            "system", "host", "ZimaOS host", "rauc_activated_slot",
+            kind="identity", text_value=activated_slot,
+            evidence=f"Activated: {activated_slot}",
+        ))
+    if rauc_status["evidence_available"]:
+        fingerprint = rauc_diagnostics.inventory_fingerprint(rauc_status)
+        if fingerprint:
+            observations.append(_observation(
+                "system", "host", "ZimaOS host", "rauc_slot_inventory",
+                kind="identity", text_value=fingerprint,
+                evidence="; ".join(
+                    slot["raw_header"] for slot in rauc_status["slots"]
+                ),
+            ))
+        has_issue = bool(rauc_status["issues"])
+        observations.append(_observation(
+            "system", "host", "ZimaOS host", "rauc_slot_health",
+            kind="state", numeric_value=1 if has_issue else 0,
+            unit="boolean", issue=has_issue,
+            evidence=rauc_status["conclusion"],
+        ))
+        if rauc_status["booted_status"]:
+            observations.append(_observation(
+                "system", "host", "ZimaOS host", "rauc_boot_status",
+                kind="state", text_value=rauc_status["booted_status"],
+                issue=rauc_status["booted_status"] == "bad",
+                evidence=(
+                    f"Booted from: {booted_slot}; "
+                    f"boot status: {rauc_status['booted_status']}"
+                ),
+            ))
     kernel = (evidence.get("kernel", "") or "").strip()
     if kernel and not kernel.startswith("ERROR:"):
         observations.append(_observation(
@@ -729,6 +811,7 @@ def collect_observations(evidence):
     observations.extend(_container_observations(evidence.get("docker_states", "")))
     observations.extend(_service_observations(evidence))
     observations.extend(_mount_observations(evidence.get("mounts", "")))
+    observations.extend(_bind_mount_permission_observations(evidence))
     observations.extend(_path_observations(evidence.get("path_state", "")))
     observations.extend(_io_process_observations(evidence.get("io_top", "")))
     observations.extend(_system_observations(evidence))
@@ -1526,13 +1609,16 @@ def configuration_drift_history(db_path=TREND_DB_PATH, limit=10):
 
 def system_update_history(db_path=TREND_DB_PATH, limit=10):
     tracked_metrics = (
-        "os_version", "build_date", "kernel", "rauc_booted_slot"
+        "os_version", "build_date", "kernel", "rauc_booted_slot",
+        "rauc_activated_slot", "rauc_slot_inventory",
     )
     labels = {
         "os_version": "ZimaOS version",
         "build_date": "OS build date",
         "kernel": "kernel",
         "rauc_booted_slot": "RAUC booted slot",
+        "rauc_activated_slot": "RAUC activated slot",
+        "rauc_slot_inventory": "RAUC slot inventory",
     }
 
     with sqlite3.connect(db_path, timeout=5) as con:

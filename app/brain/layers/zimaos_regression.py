@@ -1,3 +1,8 @@
+import re
+
+from brain import rauc_diagnostics
+
+
 def _lines_from_text(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
@@ -5,6 +10,149 @@ def _lines_from_text(text):
 def _contains_any(text, needles):
     low = (text or "").lower()
     return any(n.lower() in low for n in needles)
+
+
+def _rauc_focus(question):
+    tokens = set(re.findall(r"[a-z0-9]+", str(question or "").lower()))
+    if "rauc" in tokens:
+        return True
+    return bool(
+        tokens & {"slot", "slots"}
+        and tokens & {
+            "update", "boot", "booted", "activated", "active", "inactive",
+            "good", "bad", "missing", "present", "health", "healthy", "status",
+        }
+    )
+
+
+def _rauc_lines(assessment):
+    lines = ["", "### RAUC Status", ""]
+    lines.append(
+        f"- Compatible: {assessment.get('compatible') or 'not verified'}"
+    )
+    lines.append(
+        "- Booted slot: "
+        f"{rauc_diagnostics.reference_label(assessment.get('booted'))}"
+    )
+    lines.append(
+        "- Active rootfs: "
+        f"{rauc_diagnostics.slot_label(assessment.get('active_rootfs'))}"
+    )
+    lines.append(
+        "- Activated slot: "
+        f"{rauc_diagnostics.reference_label(assessment.get('activated'))}"
+    )
+
+    inactive = assessment.get("inactive_slots", [])
+    lines.append(
+        "- Inactive slot(s): "
+        + (
+            ", ".join(rauc_diagnostics.slot_label(slot) for slot in inactive)
+            if inactive else "none verified"
+        )
+    )
+    lines.append(
+        f"- Boot status: {assessment.get('booted_status') or 'not verified'}"
+    )
+
+    slots = assessment.get("slots", [])
+    if slots:
+        lines.append("- Parsed slot inventory:")
+        for slot in slots:
+            facts = [
+                f"state={slot.get('state') or 'unknown'}",
+            ]
+            if slot.get("boot_status"):
+                facts.append(f"boot_status={slot['boot_status']}")
+            if slot.get("device"):
+                facts.append(f"device={slot['device']}")
+            if slot.get("parent"):
+                facts.append(f"parent={slot['parent']}")
+            lines.append(
+                f"  - {rauc_diagnostics.slot_label(slot)}: " + ", ".join(facts)
+            )
+    else:
+        lines.append("- Parsed slot inventory: unavailable")
+
+    for issue in assessment.get("issues", []):
+        lines.append(f"- {issue['level']}: {issue['message']}")
+    for limitation in assessment.get("limitations", []):
+        lines.append(f"- Evidence incomplete: {limitation}")
+
+    lines.append(f"- Severity: {assessment['severity']}")
+    lines.append(f"- Conclusion: {assessment['conclusion']}")
+    return lines
+
+
+def _rauc_result(assessment):
+    state = assessment["verification"]
+    if state == "VERIFIED":
+        title = "✅ VERIFIED FROM SAME-REPORT RAUC EVIDENCE"
+        detail = (
+            "RAUC compatibility, booted/activated selection, slot inventory and boot status "
+            "were parsed from the current report."
+        )
+    elif state == "PARTIALLY VERIFIED" and assessment["issues"]:
+        next_step = (
+            "Verify the incomplete fields and whether the activated selection is intentional before "
+            "any `mark-good`, `mark-bad`, `mark-active`, rollback or reinstall action."
+        )
+        forum_summary = (
+            "RAUC status needs attention. A slot condition was verified, but other slot evidence "
+            "is incomplete and the finding does not by itself prove an update failure."
+        )
+    elif state == "PARTIALLY VERIFIED":
+        title = "⚠️ PARTIALLY VERIFIED"
+        detail = (
+            "RAUC evidence was captured, but one or more slot, activation or boot-status "
+            "fields could not be verified."
+        )
+    else:
+        title = "❌ NOT VERIFIED FROM CURRENT REPORT"
+        detail = "No parseable RAUC status evidence was available in the current report."
+
+    if assessment["healthy"]:
+        next_step = (
+            "No RAUC repair or slot switch is indicated. Keep this slot state as the local "
+            "baseline and compare it after the next ZimaOS update."
+        )
+        forum_summary = (
+            "RAUC status looks healthy: both slot groups are present and the booted slot "
+            "is marked good."
+        )
+    elif state == "PARTIALLY VERIFIED":
+        next_step = (
+            "Confirm the incomplete RAUC slot-state and boot-status fields before changing, "
+            "activating or marking any slot."
+        )
+        forum_summary = (
+            "RAUC status is partially verified. No bad slot was confirmed, but the current "
+            "slot evidence is incomplete."
+        )
+    elif state == "NOT VERIFIED":
+        next_step = (
+            "Collect a fresh read-only `rauc status` output before giving update, rollback "
+            "or slot-repair advice."
+        )
+        forum_summary = "RAUC slot health could not be verified from the current report."
+    else:
+        next_step = (
+            "Verify whether the activated selection is intentional and inspect the exact bad, "
+            "missing or inconsistent slot evidence before any `mark-good`, `mark-bad`, "
+            "`mark-active`, rollback or reinstall action."
+        )
+        forum_summary = (
+            "RAUC status needs attention. The current report contains a bad, missing or "
+            "inconsistent slot condition, but this alone does not prove an update failure."
+        )
+
+    return {
+        "next_step": next_step,
+        "forum_summary": forum_summary,
+        "trust_state": state,
+        "trust_title": title,
+        "trust_detail": detail,
+    }
 
 
 def answer(bundle, question=""):
@@ -44,6 +192,8 @@ def answer(bundle, question=""):
     host_kernel = (evidence.get("kernel", "") or "").strip()
     host_uptime = (evidence.get("uptime", "") or "").strip()
     host_rauc_raw = (evidence.get("rauc", "") or "").strip()
+    rauc_assessment = rauc_diagnostics.assess_status(host_rauc_raw)
+    rauc_focus = _rauc_focus(question)
     host_cmdline = (evidence.get("cmdline", "") or "").strip()
     normalized = bundle.get("normalized", {})
 
@@ -125,17 +275,8 @@ def answer(bundle, question=""):
         lines.append(f"- Kernel: {host_kernel}")
     if host_uptime:
         lines.append(f"- Uptime: {host_uptime}")
-    if host_rauc_raw and "not found" not in host_rauc_raw.lower():
-        useful_rauc = []
-        for rauc_line in _lines_from_text(host_rauc_raw):
-            low = rauc_line.lower()
-            if rauc_line.startswith("==="):
-                continue
-            if "system info" in low:
-                continue
-            useful_rauc.append(rauc_line)
-        if useful_rauc:
-            lines.append(f"- RAUC: {useful_rauc[0]}")
+    if host_rauc_raw:
+        lines.extend(_rauc_lines(rauc_assessment))
     if host_cmdline:
         lines.append(f"- Boot cmdline: {host_cmdline[:240]}")
 
@@ -146,11 +287,18 @@ def answer(bundle, question=""):
     if not host_version_available and not version_clues:
         lines.append("- No direct ZimaOS version or update-slot evidence was parsed from the current report.")
 
+    if rauc_focus:
+        result = {
+            "lines": lines,
+            **_rauc_result(rauc_assessment),
+        }
+        return result
+
     if version_only:
         return {
             "lines": lines,
             "next_step": "Use this version evidence as the baseline. Only run the full regression check if the issue started after an update or paths/apps changed.",
-            "forum_summary": "The running ZimaOS host version, kernel, uptime, RAUC compatibility, and boot command line were checked from same-report host evidence.",
+            "forum_summary": "The running ZimaOS host version, kernel, uptime, RAUC compatibility, slot status, and boot command line were checked from same-report host evidence.",
         }
 
     lines.append("")

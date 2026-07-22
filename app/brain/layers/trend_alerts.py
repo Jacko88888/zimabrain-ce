@@ -23,7 +23,7 @@ def _actionable(event):
         return True
     if classification != "persistent":
         return False
-    if event.get("category") in {"service", "service_exec"}:
+    if event.get("category") in {"service", "service_exec", "container_mount"}:
         return True
     if event.get("category") == "container":
         if event.get("metric") == "health":

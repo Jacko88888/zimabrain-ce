@@ -15,6 +15,7 @@ from brain.layers import containers
 from brain.layers import system_commands
 from brain.layers import network_commands
 from brain.layers import docker_bind_mounts
+from brain.layers import container_bind_mount_permissions
 from brain.layers import docker_daemon_diag
 from brain.layers import app_storage_paths
 from brain.layers import app_runtime_diag
@@ -260,6 +261,9 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     system_command_question = route.get("system_command_question", False)
     network_command_question = route.get("network_command_question", False)
     docker_bind_mount_question = route.get("docker_bind_mount_question", False)
+    container_bind_mount_permission_question = route.get(
+        "container_bind_mount_permission_question", False
+    )
     docker_daemon_question = route.get("docker_daemon_question", False)
     app_storage_path_question = route.get("app_storage_path_question", False)
     app_runtime_diag_question = route.get("app_runtime_diag_question", False)
@@ -332,7 +336,7 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
     active_layer_file = "app/brain/answer_builder.py"
     layer_start_index = len(out)
 
-    if files_media_question:
+    if files_media_question and handler != "container_bind_mount_permissions":
         active_layer = "Files / AppData / Media Same-Report Verifier"
         active_layer_file = "app/brain/answer_builder.py"
         critical = bundle.get("critical_findings", [])
@@ -478,6 +482,9 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
 
     elif gpu_ai_runtime_question:
         layer = gpu_ai_runtime.answer(bundle)
@@ -518,6 +525,17 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
         out.extend(layer["lines"])
         next_step = layer["next_step"]
         forum_summary = layer["forum_summary"]
+
+    elif container_bind_mount_permission_question:
+        layer = container_bind_mount_permissions.answer(bundle, question)
+        active_layer = "Container Bind-Mount Permission Diagnostics Layer"
+        active_layer_file = "app/brain/layers/container_bind_mount_permissions.py"
+        out.extend(layer["lines"])
+        next_step = layer["next_step"]
+        forum_summary = layer["forum_summary"]
+        trust_state_override = layer.get("trust_state")
+        trust_title_override = layer.get("trust_title")
+        trust_detail_override = layer.get("trust_detail")
 
     elif install_boot_question:
         layer = install_boot_diag.answer(bundle, question)

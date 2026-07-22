@@ -17,6 +17,8 @@ from brain import health_memory
 from brain import intent_policy
 from brain import question_memory
 from brain import service_diagnostics
+from brain import rauc_diagnostics
+from brain import bind_mount_permissions
 import os
 import secrets
 import hmac
@@ -1649,6 +1651,12 @@ done | head -120""",
     evidence["failed_unit_details_collected"] = not str(
         evidence.get("failed_units", "") or ""
     ).startswith("ERROR:")
+    evidence["bind_mount_permissions"] = (
+        bind_mount_permissions.collect_bind_mount_permission_evidence(
+            evidence.get("docker_access", ""),
+            run_host_command,
+        )
+    )
     return evidence
 
 
@@ -1887,6 +1895,12 @@ def evaluate_critical_same_report(evidence):
             "why": "The failed-unit list is present, but related-service and executable-path evidence is incomplete.",
             "next": "Collect detailed failed-unit evidence before changing anything.",
         })
+
+    rauc_finding = rauc_diagnostics.critical_finding(
+        rauc_diagnostics.assess_status(evidence.get("rauc", "") or "")
+    )
+    if rauc_finding:
+        findings.append(rauc_finding)
 
     if "snapraid-sync.service" in low_failed and "failed" in low_failed:
         level = "RED" if ("mergerfs" in low_mounts or "snapraid" in low_mounts) else "YELLOW"

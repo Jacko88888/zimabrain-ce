@@ -26,6 +26,7 @@ ALL_FLAGS = [
     "disk_health_question",
     "storage_mount_question",
     "docker_bind_mount_question",
+    "container_bind_mount_permission_question",
     "app_storage_path_question",
     "app_runtime_diag_question",
     "app_setup_playbook_question",
@@ -380,6 +381,33 @@ def classify(question):
             "failed_unit_question",
             28.0,
             ["gate:service-execution", "entity:failed-helper-executable"],
+        )
+
+    rauc_action_intent = bool(
+        {"safe", "safety", "rollback", "reinstall", "mark", "switch", "change"} & qt
+    )
+    rauc_slot_intent = bool(
+        "rauc" in qt
+        or (
+            {"slot", "slots"} & qt
+            and (
+                {"update", "boot", "booted", "activated", "rootfs", "kernel"} & qt
+                or (
+                    {
+                        "active", "inactive", "good", "bad", "missing",
+                        "present", "health", "healthy", "status",
+                    } & qt
+                    and {"zimaos", "os"} & qt
+                )
+            )
+        )
+    )
+    if rauc_slot_intent and not rauc_action_intent:
+        _score(
+            candidates,
+            "zimaos_regression_question",
+            34.0,
+            ["gate:rauc-slot-status", "entity:rauc-slots"],
         )
 
     # General slow ZimaOS diagnostic.
@@ -898,6 +926,7 @@ def classify(question):
         "disk_health_question": "disk_health",
         "storage_mount_question": "storage_mounts",
         "docker_bind_mount_question": "docker_bind_mounts",
+        "container_bind_mount_permission_question": "container_bind_mount_permissions",
         "app_storage_path_question": "app_storage_paths",
         "app_runtime_diag_question": "app_runtime_diag",
         "app_setup_playbook_question": "app_setup_playbook",

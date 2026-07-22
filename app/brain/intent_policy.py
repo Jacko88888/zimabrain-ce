@@ -1,5 +1,18 @@
 import re
 
+try:
+    from brain.app_aliases import APP_ALIASES
+except Exception:
+    from app.brain.app_aliases import APP_ALIASES
+
+
+APP_TOKENS = set(APP_ALIASES)
+for _aliases in APP_ALIASES.values():
+    APP_TOKENS.update(
+        alias for alias in _aliases
+        if re.fullmatch(r"[a-z0-9]+", alias)
+    )
+
 
 def _tokens(question):
     return set(re.findall(r"[a-z0-9]+", str(question or "").lower()))
@@ -24,6 +37,40 @@ def classify(question):
 
     if {"fictional", "imaginary", "nonexistent", "madeup"} & tokens:
         return _result()
+
+    rauc_action_question = bool(
+        tokens & {"safe", "safety", "rollback", "reinstall", "mark", "switch", "change"}
+    )
+    rauc_slot_question = bool(
+        "rauc" in tokens
+        or (
+            tokens & {"slot", "slots"}
+            and (
+                tokens & {"update", "boot", "booted", "activated", "rootfs", "kernel"}
+                or (
+                    tokens & {
+                        "active", "inactive", "good", "bad", "missing",
+                        "present", "health", "healthy", "status",
+                    }
+                    and tokens & {"zimaos", "os"}
+                )
+            )
+        )
+    )
+    if rauc_slot_question and rauc_action_question:
+        return _result(
+            "system", "safety", "rauc",
+            "zimaos_update_safety",
+            "zimaos_update_safety_question",
+            "zimaos_update_safety",
+        )
+    if rauc_slot_question:
+        return _result(
+            "system", "status", "rauc",
+            "zimaos_regression",
+            "zimaos_regression_question",
+            "zimaos_regression",
+        )
 
     system_subjects = {
         "system", "machine", "host", "zimacube", "cube", "server"
@@ -202,6 +249,61 @@ def classify(question):
             "containers",
             "container_question",
             "containers",
+        )
+
+    container_permission_scope = bool(
+        tokens & {"docker", "container", "containers", "volume", "volumes", "bind"}
+        or tokens & {"app", "application"}
+        or tokens & APP_TOKENS
+    )
+    storage_permission_scope = bool(
+        tokens & {
+            "storage", "filesystem", "drive", "disk", "usb", "media", "folder",
+            "folders", "file", "files", "mount", "mounted", "volume", "volumes",
+        }
+    )
+    write_permission_symptom = bool(
+        tokens & {
+            "permission", "permissions", "denied", "writable", "write", "writing",
+            "create", "creating", "rename", "renaming", "delete", "deleting",
+            "remove", "removing", "readonly", "ownership", "owner", "uid", "gid",
+        }
+        or "read-only" in q
+        or "read only" in q
+    )
+    read_write_contrast = bool(
+        "read" in tokens
+        and tokens & {"write", "create", "rename", "delete", "remove", "move"}
+    )
+    explicit_storage_path = bool(
+        re.search(r"/(?:data|media|mnt|srv)(?:/|\b)", q)
+    )
+    named_writer_match = re.search(
+        r"\b([a-z0-9][a-z0-9_.-]{2,})\s+"
+        r"(?:write|create|rename|delete|remove|move)\b",
+        q,
+    )
+    named_writer = (
+        named_writer_match.group(1) if named_writer_match else ""
+    )
+    explicit_named_storage_writer = bool(
+        explicit_storage_path
+        and named_writer
+        and named_writer not in {
+            "app", "application", "container", "docker", "host", "root",
+            "system", "user", "users", "this", "that",
+        }
+    )
+    if (
+        (container_permission_scope or explicit_named_storage_writer)
+        and storage_permission_scope
+        and (write_permission_symptom or read_write_contrast)
+    ):
+        return _result(
+            "containers", "diagnose", "bind-permissions",
+            "container_bind_mount_permissions",
+            "container_bind_mount_permission_question",
+            "container_bind_mount_permissions",
         )
 
     read_only = (
