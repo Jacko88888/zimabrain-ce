@@ -17,6 +17,7 @@ from brain import health_memory
 from brain import intent_policy
 from brain import router
 from brain.layers import container_bind_mount_permissions
+from brain.layers import trend_alerts
 
 
 def record(**overrides):
@@ -91,6 +92,9 @@ exfat = bind_mount_permissions.assess_record(record())
 assert exfat["classification"] == "filesystem_mount_mask_restriction"
 assert exfat["verification"] == "VERIFIED"
 assert exfat["severity"] == "HIGH"
+assert exfat["operational_failure_verified"]
+assert exfat["finding_role"] == "actionable_operational_failure"
+assert exfat["actionable"]
 assert exfat["host_read_only"] is False
 assert exfat["bind_read_only"] is False
 assert exfat["mode_write_allowed"] is False
@@ -115,12 +119,19 @@ posix_record["acl"] = {"available": True, "named_entries": False, "text": ""}
 posix = bind_mount_permissions.assess_record(posix_record)
 assert posix["classification"] == "numeric_uid_gid_mismatch"
 assert posix["verification"] == "VERIFIED"
+assert posix["issue"]
 
 posix_untested_record = copy.deepcopy(posix_record)
 posix_untested_record["write_test"] = {"attempted": False, "result": "not tested"}
 posix_untested = bind_mount_permissions.assess_record(posix_untested_record)
 assert posix_untested["classification"] == "numeric_uid_gid_mismatch"
-assert posix_untested["verification"] == "PARTIALLY VERIFIED"
+assert posix_untested["verification"] == "VERIFIED"
+assert posix_untested["severity"] == "INFORMATION"
+assert posix_untested["configuration_observation"]
+assert not posix_untested["operational_failure_verified"]
+assert not posix_untested["actionable"]
+assert not posix_untested["issue"]
+assert "configuration context" in posix_untested["explanation"]
 
 acl_record = copy.deepcopy(posix_record)
 acl_record["acl"] = {"available": False, "named_entries": False, "text": ""}
@@ -156,6 +167,8 @@ assert "fmask=0022,dmask=0022" in layer_text
 assert "531:0 mode=755" in layer_text
 assert "1000:1000 (PUID/PGID environment)" in layer_text
 assert "filesystem_mount_mask_restriction" in layer_text
+assert "Finding role: actionable operational failure" in layer_text
+assert "a required file operation failed" in layer_text
 assert "failed/unsupported; no remount success is assumed" in layer_text
 assert "recursive chmod/chown is not an appropriate correction" in layer_text
 assert "Do not change PUID/PGID" in layer_text
@@ -172,6 +185,8 @@ probe_layer = container_bind_mount_permissions.answer(
 )
 probe_text = "\n".join(probe_layer["lines"])
 assert probe_layer["trust_state"] == "PARTIALLY VERIFIED"
+assert "Finding role: configuration observation" in probe_text
+assert "configuration context only" in probe_text
 assert "Optional temporary verification" in probe_text
 assert "docker exec -u 1000:1000 plex" in probe_text
 assert ".zimabrain-permission-test" in probe_text
@@ -387,6 +402,41 @@ with tempfile.TemporaryDirectory() as tmp:
     assert [row[0] for row in rows] == [
         "historical_baseline", "persistent", "recovered"
     ]
+
+
+# An untested numeric mismatch is configuration context, not an actionable alert.
+with tempfile.TemporaryDirectory() as tmp:
+    db_path = str(Path(tmp) / "trends.sqlite")
+    observation = copy.deepcopy(posix_untested_record)
+    health_memory.record_health_scan(
+        {"bind_mount_permissions": evidence(observation)},
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 10:00:00",
+    )
+    health_memory.record_health_scan(
+        {"bind_mount_permissions": evidence(observation)},
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 11:00:00",
+    )
+    events = health_memory.latest_events(db_path=db_path, limit=50)
+    permission_events = [
+        item for item in events
+        if item["category"] == "container_mount"
+        and item["metric"] == "permission_state"
+    ]
+    assert permission_events
+    assert all(not trend_alerts._actionable(item) for item in permission_events)
+    with sqlite3.connect(db_path) as con:
+        classifications = [
+            row[0] for row in con.execute("""
+                SELECT classification FROM health_events
+                WHERE category='container_mount' AND metric='permission_state'
+                ORDER BY id
+            """).fetchall()
+        ]
+    assert classifications == ["baseline", "stable"]
 
 
 print("RESULT: PASS (container bind permissions, filesystem causes, safety, routing, timeline)")

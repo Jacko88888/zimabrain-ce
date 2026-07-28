@@ -9,6 +9,8 @@ NON_POSIX_PERMISSION_FILESYSTEMS = {
 WRITE_ACTION_WORDS = {
     "write", "writable", "create", "rename", "delete", "remove", "move"
 }
+WRITE_SUCCESS_RESULTS = {"success", "passed", "writable"}
+WRITE_FAILURE_RESULTS = {"denied", "permission denied", "failed"}
 
 
 def _run(run_command, command, timeout=12):
@@ -384,6 +386,24 @@ def _option_set(options):
     return {item.strip().lower() for item in str(options or "").split(",") if item.strip()}
 
 
+def _write_test_outcome(write_test):
+    write_test = write_test if isinstance(write_test, dict) else {}
+    attempted = bool(write_test.get("attempted"))
+    result = str(write_test.get("result", "not tested") or "").strip().lower()
+    succeeded = attempted and (
+        result in WRITE_SUCCESS_RESULTS
+        or result.startswith("success")
+        or result.startswith("passed")
+    )
+    failed = attempted and (
+        result in WRITE_FAILURE_RESULTS
+        or "permission denied" in result
+        or result.startswith("failed")
+        or result.startswith("denied")
+    )
+    return attempted, result, succeeded, failed
+
+
 def assess_record(record):
     mount = record.get("mount", {}) or {}
     stat = record.get("stat", {}) or {}
@@ -403,7 +423,7 @@ def assess_record(record):
         identity_groups,
     )
     write_test = record.get("write_test", {}) or {}
-    write_result = str(write_test.get("result", "not tested") or "").lower()
+    _, write_result, write_succeeded, write_failed = _write_test_outcome(write_test)
     host_ro = "ro" in options and "rw" not in options
     bind_ro = not bool(record.get("bind_rw"))
     non_posix = fstype in NON_POSIX_PERMISSION_FILESYSTEMS
@@ -414,22 +434,17 @@ def assess_record(record):
 
     if host_ro:
         classification = "host_mount_read_only"
-        severity = "HIGH"
-        verification = (
-            "VERIFIED"
-            if write_result in {"denied", "permission denied", "failed"}
-            or identity_source in {"Docker Config.User", "container init process"}
-            else "PARTIALLY VERIFIED"
-        )
+        severity = "HIGH" if write_failed else "INFORMATION"
+        verification = "VERIFIED"
         explanation = "The host filesystem itself is mounted read-only."
     elif bind_ro:
         classification = "docker_bind_read_only"
-        severity = "HIGH"
+        severity = "HIGH" if write_failed else "INFORMATION"
         verification = "VERIFIED"
         explanation = "The host mount is available, but this Docker bind is read-only."
     elif uid is None or gid is None or not stat.get("evidence_available") or not mount.get("evidence_available"):
         explanation = "Container identity, host ownership or active mount evidence is incomplete."
-    elif write_result in {"success", "passed", "writable"}:
+    elif write_succeeded:
         classification = "application_level_restriction_possible"
         severity = "WARNING"
         verification = "PARTIALLY VERIFIED"
@@ -439,8 +454,8 @@ def assess_record(record):
         )
     elif write_allowed is False and non_posix:
         classification = "filesystem_mount_mask_restriction"
-        severity = "HIGH" if write_result in {"denied", "permission denied", "failed"} else "WARNING"
-        verification = "VERIFIED" if write_result in {"denied", "permission denied", "failed"} else "PARTIALLY VERIFIED"
+        severity = "HIGH" if write_failed else "INFORMATION"
+        verification = "VERIFIED"
         explanation = (
             f"The {fstype} mount is read/write, but its synthesized ownership/mode does not "
             "grant write access to the container identity."
@@ -451,21 +466,17 @@ def assess_record(record):
             if uid != stat.get("uid") and gid != stat.get("gid")
             else "directory_mode_blocks_container"
         )
-        severity = "HIGH" if write_result in {"denied", "permission denied", "failed"} else "WARNING"
-        verification = (
-            "VERIFIED"
-            if write_result in {"denied", "permission denied", "failed"}
-            else "PARTIALLY VERIFIED"
-        )
+        severity = "HIGH" if write_failed else "INFORMATION"
+        verification = "VERIFIED"
         explanation = "Host directory mode and numeric ownership block this container identity."
     elif write_allowed is False:
         classification = "acl_or_directory_permission_restriction"
-        severity = "WARNING"
+        severity = "WARNING" if write_failed else "INFORMATION"
         explanation = (
             "Directory mode does not grant write access, but ACL evidence is unavailable or "
             "contains named entries, so the exact permission gate is incomplete."
         )
-    elif write_result in {"denied", "permission denied", "failed"}:
+    elif write_failed:
         classification = "permission_denied_unresolved"
         severity = "WARNING"
         explanation = (
@@ -481,6 +492,29 @@ def assess_record(record):
             "probe has not been run."
         )
 
+    configuration_observation = classification in {
+        "host_mount_read_only",
+        "docker_bind_read_only",
+        "filesystem_mount_mask_restriction",
+        "numeric_uid_gid_mismatch",
+        "directory_mode_blocks_container",
+        "acl_or_directory_permission_restriction",
+        "mode_allows_write_not_tested",
+    }
+    operational_failure_verified = write_failed
+    if configuration_observation and not operational_failure_verified:
+        explanation += (
+            " This is configuration context, not a confirmed operational problem, because "
+            "no required file operation has been verified as failing."
+        )
+    finding_role = (
+        "actionable_operational_failure"
+        if operational_failure_verified
+        else "configuration_observation"
+        if configuration_observation
+        else "diagnostic_context"
+    )
+
     return {
         **record,
         "classification": classification,
@@ -492,10 +526,11 @@ def assess_record(record):
         "filesystem_uses_mount_permissions": non_posix,
         "mode_write_allowed": write_allowed,
         "permission_class": permission_class,
-        "issue": classification not in {
-            "mode_allows_write_not_tested", "application_level_restriction_possible",
-            "evidence_incomplete",
-        },
+        "configuration_observation": configuration_observation,
+        "operational_failure_verified": operational_failure_verified,
+        "finding_role": finding_role,
+        "actionable": operational_failure_verified,
+        "issue": operational_failure_verified,
     }
 
 

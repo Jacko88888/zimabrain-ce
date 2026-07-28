@@ -778,7 +778,37 @@ def _security_observations(evidence):
     return observations
 
 
-def _port_observations(text):
+def _docker_port_bindings(text):
+    bindings = {}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or "|" not in line:
+            continue
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            continue
+        name = parts[0].lstrip("/")
+        for published in parts[2].split(";"):
+            if "=>" not in published:
+                continue
+            _, host_bindings = published.split("=>", 1)
+            for host_binding in host_bindings.split(","):
+                host_binding = host_binding.strip()
+                if not host_binding or ":" not in host_binding:
+                    continue
+                host_ip, host_port = host_binding.rsplit(":", 1)
+                host_ip = host_ip.strip("[]") or "unknown"
+                if not host_port.isdigit():
+                    continue
+                bindings.setdefault((name, host_port), set()).add(host_ip)
+    return {
+        key: ",".join(sorted(values))
+        for key, values in bindings.items()
+    }
+
+
+def _port_observations(text, docker_access=""):
+    bind_map = _docker_port_bindings(docker_access)
     observations = []
     for raw in (text or "").splitlines():
         if not raw.strip() or raw.startswith("HOST_LAN_IP="):
@@ -794,11 +824,20 @@ def _port_observations(text):
                 values[key] = value
         lan = values.get("lan", "unknown")
         local = values.get("localhost", "unknown")
+        entity_key = f"{name}:{port}"
+        entity_name = f"{name} port {port}"
         observations.append(_observation(
-            "network", f"{name}:{port}", f"{name} port {port}", "reachability",
+            "network", entity_key, entity_name, "reachability",
             kind="state", text_value=f"localhost={local}|lan={lan}",
             evidence=raw,
         ))
+        bind_address = bind_map.get((name, port))
+        if bind_address:
+            observations.append(_observation(
+                "network", entity_key, entity_name, "bind_address",
+                kind="identity", text_value=bind_address,
+                evidence=f"Docker published host bind: {bind_address}:{port}",
+            ))
     return observations
 
 
@@ -816,7 +855,10 @@ def collect_observations(evidence):
     observations.extend(_io_process_observations(evidence.get("io_top", "")))
     observations.extend(_system_observations(evidence))
     observations.extend(_security_observations(evidence))
-    observations.extend(_port_observations(evidence.get("port_reachability", "")))
+    observations.extend(_port_observations(
+        evidence.get("port_reachability", ""),
+        evidence.get("docker_access", ""),
+    ))
     return observations
 
 
@@ -1410,6 +1452,8 @@ def _drift_status(category, entity_key, metric, previous, current):
         if previous_lan and not current_lan:
             return "lan_exposure_restricted", "recovery"
         return "reachability_changed", "information"
+    if category == "network" and metric == "bind_address":
+        return "network_bind_changed", "information"
 
     if category == "security":
         if entity_key == "zfw" and metric == "state":
@@ -1447,6 +1491,119 @@ def _drift_status(category, entity_key, metric, previous, current):
             return "security_signature_changed", "attention"
 
     return "configuration_changed", "information"
+
+
+def _bind_scope(value):
+    addresses = {
+        item.strip().lower()
+        for item in str(value or "").split(",")
+        if item.strip()
+    }
+    if not addresses:
+        return "unknown"
+    if addresses <= {"127.0.0.1", "::1", "localhost"}:
+        return "localhost_only"
+    if addresses & {"0.0.0.0", "::", "*"}:
+        return "all_interfaces"
+    return "specific_non_loopback"
+
+
+def _network_drift_cause(
+    classification, entity_key, previous, current, previous_map, current_map
+):
+    bind_key = ("network", entity_key, "bind_address")
+    previous_bind = previous_map.get(bind_key)
+    current_bind = current_map.get(bind_key)
+    previous_scope = _bind_scope(previous_bind)
+    current_scope = _bind_scope(current_bind)
+
+    if classification == "new_lan_exposure":
+        if previous is None and current_scope in {
+            "all_interfaces", "specific_non_loopback"
+        }:
+            return {
+                "verification": "VERIFIED",
+                "summary": (
+                    "Cause verified: the port is newly recorded and Docker publishes it "
+                    f"on `{current_bind}`, which permits LAN access."
+                ),
+                "evidence": f"previous bind=not recorded; current bind={current_bind}",
+            }
+        if (
+            previous_scope == "localhost_only"
+            and current_scope in {"all_interfaces", "specific_non_loopback"}
+        ):
+            return {
+                "verification": "VERIFIED",
+                "summary": (
+                    "Cause verified: the Docker host bind changed from "
+                    f"`{previous_bind}` to `{current_bind}`, widening it from localhost-only "
+                    "to a LAN-capable address."
+                ),
+                "evidence": (
+                    f"previous bind={previous_bind}; current bind={current_bind}"
+                ),
+            }
+        if previous_bind == current_bind and current_bind:
+            return {
+                "verification": "NOT VERIFIED",
+                "summary": (
+                    f"Cause not verified: the Docker host bind remained `{current_bind}`; "
+                    "the stored evidence does not prove whether firewall, ZFW, VLAN, service "
+                    "state or another network control changed."
+                ),
+                "evidence": (
+                    f"previous bind={previous_bind}; current bind={current_bind}"
+                ),
+            }
+        return {
+            "verification": "NOT VERIFIED",
+            "summary": (
+                "Cause not verified: comparable Docker host-bind evidence is unavailable "
+                "for this exposure change."
+            ),
+            "evidence": (
+                f"previous bind={previous_bind or 'not recorded'}; "
+                f"current bind={current_bind or 'not recorded'}"
+            ),
+        }
+
+    if classification == "lan_exposure_restricted":
+        if (
+            previous_scope in {"all_interfaces", "specific_non_loopback"}
+            and current_scope == "localhost_only"
+        ):
+            return {
+                "verification": "VERIFIED",
+                "summary": (
+                    "Cause verified: the Docker host bind changed from "
+                    f"`{previous_bind}` to `{current_bind}`, restricting it to localhost."
+                ),
+                "evidence": (
+                    f"previous bind={previous_bind}; current bind={current_bind}"
+                ),
+            }
+        if previous_bind == current_bind and current_bind:
+            return {
+                "verification": "NOT VERIFIED",
+                "summary": (
+                    f"Cause not verified: the Docker host bind remained `{current_bind}`; "
+                    "the stored evidence does not prove which other network control blocked "
+                    "LAN reachability."
+                ),
+                "evidence": (
+                    f"previous bind={previous_bind}; current bind={current_bind}"
+                ),
+            }
+
+    return {
+        "verification": "NOT VERIFIED",
+        "summary": "Cause not verified from the stored network evidence.",
+        "evidence": (
+            f"previous bind={previous_bind or 'not recorded'}; "
+            f"current bind={current_bind or 'not recorded'}"
+        ),
+    }
 
 
 def configuration_drift_history(db_path=TREND_DB_PATH, limit=10):
@@ -1524,11 +1681,33 @@ def configuration_drift_history(db_path=TREND_DB_PATH, limit=10):
                 ):
                     continue
 
+                if category == "network" and metric == "bind_address":
+                    reachability_key = ("network", entity_key, "reachability")
+                    if previous is None or current is None:
+                        continue
+                    if (
+                        previous_map.get(reachability_key)
+                        != current_map.get(reachability_key)
+                    ):
+                        continue
+
                 classification, severity = _drift_status(
                     category, entity_key, metric, previous, current
                 )
+                cause = None
+                if category == "network" and metric == "reachability":
+                    cause = _network_drift_cause(
+                        classification, entity_key, previous, current,
+                        previous_map, current_map,
+                    )
                 old = str(previous)[:180] if previous is not None else "not recorded"
                 new = str(current)[:180] if current is not None else "not recorded"
+                message = (
+                    f"{names.get(key, entity_key)} {metric.replace('_', ' ')} "
+                    f"changed from {old} to {new}."
+                )
+                if cause:
+                    message += f" {cause['summary']}"
                 drifts.append({
                     "from_scan": previous_scan["id"],
                     "to_scan": current_scan["id"],
@@ -1541,10 +1720,12 @@ def configuration_drift_history(db_path=TREND_DB_PATH, limit=10):
                     "current": current,
                     "classification": classification,
                     "severity": severity,
-                    "message": (
-                        f"{names.get(key, entity_key)} {metric.replace('_', ' ')} "
-                        f"changed from {old} to {new}."
+                    "cause_verification": (
+                        cause.get("verification") if cause else "NOT APPLICABLE"
                     ),
+                    "cause": cause.get("summary") if cause else "",
+                    "cause_evidence": cause.get("evidence") if cause else "",
+                    "message": message,
                 })
 
     severity_order = {

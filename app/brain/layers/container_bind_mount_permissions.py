@@ -87,7 +87,6 @@ def answer(bundle, question):
             "trust_detail": "The requested container/path was not matched to current Docker bind evidence.",
         }
 
-    states = []
     if not focused_selection:
         lines.extend([
             "- The question did not identify an exact container or bind path.",
@@ -99,7 +98,6 @@ def answer(bundle, question):
 
     exact_selection = focused_selection and len(records) == 1
     for record in records[:30]:
-        states.append(record.get("verification", "PARTIALLY VERIFIED"))
         mount = record.get("mount", {}) or {}
         stat = record.get("stat", {}) or {}
         acl = record.get("acl", {}) or {}
@@ -125,6 +123,20 @@ def answer(bundle, question):
             f"- Container write identity: {_identity(record)}",
             f"- Classification: {record.get('classification', 'evidence_incomplete')}",
             f"- Severity: {record.get('severity', 'INCOMPLETE')}",
+            (
+                "- Finding role: actionable operational failure"
+                if record.get("operational_failure_verified")
+                else "- Finding role: configuration observation"
+                if record.get("configuration_observation")
+                else "- Finding role: diagnostic context"
+            ),
+            (
+                "- Actionability: a required file operation failed under the verified "
+                "container identity."
+                if record.get("operational_failure_verified")
+                else "- Actionability: configuration context only; no required file "
+                "operation has been verified as failing."
+            ),
             f"- Diagnosis: {record.get('explanation')}",
         ])
 
@@ -246,19 +258,23 @@ def answer(bundle, question):
             "Actionable permission candidates were found, but the question did not identify "
             "which container and bind path actually failed."
         )
-    elif "VERIFIED" in states:
+    elif any(
+        item.get("operational_failure_verified")
+        and item.get("verification") == "VERIFIED"
+        for item in records
+    ):
         trust_state = "VERIFIED"
         trust_title = "✅ VERIFIED FROM CORRELATED CONTAINER/MOUNT EVIDENCE"
         trust_detail = (
-            "Docker bind state, host mount state, numeric ownership and container identity "
-            "were correlated for at least one requested binding."
+            "A required file operation failed and Docker bind state, host mount state, "
+            "numeric ownership and container identity were correlated for the requested binding."
         )
     else:
         trust_state = "PARTIALLY VERIFIED"
         trust_title = "⚠️ PARTIALLY VERIFIED"
         trust_detail = (
-            "A matching container storage bind was found, but the actual write result or one "
-            "of the permission gates remains incomplete."
+            "A matching container storage bind and its configuration were found, but no "
+            "required file operation has been verified as failing."
         )
 
     issue_records = [item for item in records if item.get("issue")]
