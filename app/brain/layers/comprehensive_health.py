@@ -183,6 +183,7 @@ def answer(bundle, question=""):
         )
 
     restart_names = {row["name"] for row in restarting}
+    unhealthy_names = {row["name"] for row in unhealthy}
     failed_unit_names = {
         unit.lstrip("● ").split()[0]
         for unit in failed_units
@@ -211,6 +212,12 @@ def answer(bundle, question=""):
     for event in timeline_actionable:
         entity = event.get("entity_name", "")
         if entity in restart_names:
+            continue
+        if (
+            event.get("category") == "container"
+            and event.get("metric") == "health"
+            and entity in unhealthy_names
+        ):
             continue
         if event.get("category") == "service" and entity in failed_unit_names:
             continue
@@ -270,6 +277,11 @@ def answer(bundle, question=""):
     update_current = updates.get("current", {}) if isinstance(updates, dict) else {}
     update_transitions = (
         updates.get("transitions", []) if isinstance(updates, dict) else []
+    )
+    update_transition_messages = _unique(
+        item.get("message", "")
+        for item in update_transitions
+        if isinstance(item, dict)
     )
 
     lines = []
@@ -450,9 +462,9 @@ def answer(bundle, question=""):
     else:
         lines.append("- No update baseline is available.")
 
-    if update_transitions:
-        for item in update_transitions[:5]:
-            lines.append(f"- Update transition: {item.get('message', '')}")
+    if update_transition_messages:
+        for message in update_transition_messages[:5]:
+            lines.append(f"- Update transition: {message}")
     else:
         lines.append(
             "- No recorded OS/build/kernel/RAUC transition currently proves "

@@ -951,6 +951,26 @@ def _classify(obs, previous):
             return "historical_stable", 0.0
         return "stable", 0.0
 
+    # A changed issue flag without a changed observed value is not evidence of
+    # a real state transition. This can happen when actionability rules improve
+    # between app versions while the underlying captured condition is unchanged.
+    if obs["numeric_value"] is not None and prev_numeric is not None:
+        delta = float(obs["numeric_value"]) - float(prev_numeric)
+        if delta == 0:
+            return (
+                "persistent" if current_issue and previous_issue else "stable",
+                0.0,
+            )
+    elif (
+        obs["numeric_value"] is None
+        and prev_numeric is None
+        and obs["text_value"] == prev_text
+    ):
+        return (
+            "persistent" if current_issue and previous_issue else "stable",
+            None,
+        )
+
     if current_issue and previous_issue:
         return "persistent", delta
     if current_issue and not previous_issue:
@@ -959,10 +979,7 @@ def _classify(obs, previous):
         return "recovered", delta
 
     if obs["numeric_value"] is not None and prev_numeric is not None:
-        delta = float(obs["numeric_value"]) - float(prev_numeric)
-        return ("stable" if delta == 0 else "changed"), delta
-    if obs["text_value"] == prev_text:
-        return "stable", delta
+        return "changed", delta
     return "changed", delta
 
 
@@ -1788,6 +1805,16 @@ def configuration_drift_history(db_path=TREND_DB_PATH, limit=10):
     }
 
 
+def _event_has_observed_change(event):
+    previous_numeric = event.get("previous_numeric")
+    current_numeric = event.get("current_numeric")
+    if previous_numeric is not None or current_numeric is not None:
+        if previous_numeric is None or current_numeric is None:
+            return True
+        return float(previous_numeric) != float(current_numeric)
+    return event.get("previous_text") != event.get("current_text")
+
+
 def system_update_history(db_path=TREND_DB_PATH, limit=10):
     tracked_metrics = (
         "os_version", "build_date", "kernel", "rauc_booted_slot",
@@ -1864,7 +1891,8 @@ def system_update_history(db_path=TREND_DB_PATH, limit=10):
             event_placeholders = ",".join("?" for _ in scan_ids)
             related_rows = con.execute(f"""
                 SELECT scan_id, category, entity_name, metric,
-                       classification, message
+                       classification, previous_numeric, current_numeric,
+                       previous_text, current_text, message
                 FROM health_events
                 WHERE scan_id IN ({event_placeholders})
                   AND classification IN (
@@ -1890,6 +1918,7 @@ def system_update_history(db_path=TREND_DB_PATH, limit=10):
             recoveries = [
                 item for item in related
                 if item["classification"] == "recovered"
+                and _event_has_observed_change(item)
             ]
 
             if issues:

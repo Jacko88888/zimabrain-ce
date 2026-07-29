@@ -439,4 +439,100 @@ with tempfile.TemporaryDirectory() as tmp:
     assert classifications == ["baseline", "stable"]
 
 
+# A change in actionability rules must not create a false recovery when the
+# captured permission state itself is unchanged.
+with tempfile.TemporaryDirectory() as tmp:
+    db_path = str(Path(tmp) / "trends.sqlite")
+    health_memory.record_health_scan(
+        {"bind_mount_permissions": evidence(posix_record)},
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 10:00:00",
+    )
+    health_memory.record_health_scan(
+        {"bind_mount_permissions": evidence(posix_untested_record)},
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 11:00:00",
+    )
+    with sqlite3.connect(db_path) as con:
+        permission_events = con.execute("""
+            SELECT classification, previous_text, current_text, message
+            FROM health_events
+            WHERE category='container_mount' AND metric='permission_state'
+            ORDER BY id
+        """).fetchall()
+    assert [row[0] for row in permission_events] == [
+        "historical_baseline", "stable"
+    ]
+    assert permission_events[-1][1] == "numeric_uid_gid_mismatch"
+    assert permission_events[-1][2] == "numeric_uid_gid_mismatch"
+    assert "recovered from" not in permission_events[-1][3]
+
+
+# Legacy no-change recovery rows must be filtered when update history is read,
+# while genuine recoveries with different observed values remain visible.
+with tempfile.TemporaryDirectory() as tmp:
+    db_path = str(Path(tmp) / "trends.sqlite")
+    health_memory.record_health_scan(
+        {
+            "host_os": 'PRETTY_NAME="ZimaOS 1.6.2"\nVERSION_ID="1.6.2"',
+            "bind_mount_permissions": evidence(posix_record),
+        },
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 10:00:00",
+    )
+    second = health_memory.record_health_scan(
+        {
+            "host_os": 'PRETTY_NAME="ZimaOS 1.7.0"\nVERSION_ID="1.7.0"',
+            "bind_mount_permissions": evidence(posix_untested_record),
+        },
+        "v1.6.0-beta",
+        db_path=db_path,
+        created_at="2026-07-22 11:00:00",
+    )
+    with sqlite3.connect(db_path) as con:
+        con.execute("""
+            UPDATE health_events
+            SET classification='recovered',
+                previous_text='numeric_uid_gid_mismatch',
+                current_text='numeric_uid_gid_mismatch',
+                message='legacy false recovery'
+            WHERE scan_id=?
+              AND category='container_mount'
+              AND metric='permission_state'
+        """, (second["scan_id"],))
+        con.execute("""
+            INSERT INTO health_events (
+                scan_id, category, entity_key, entity_name, metric,
+                classification, previous_text, current_text,
+                occurrence_count, message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            second["scan_id"],
+            "container_mount",
+            "verified:/media",
+            "verified bind /media",
+            "permission_state",
+            "recovered",
+            "permission_denied_unresolved",
+            "application_level_restriction_possible",
+            1,
+            "verified bind /media permission state recovered",
+        ))
+        con.commit()
+
+    update_history = health_memory.system_update_history(db_path, limit=10)
+    transition = next(
+        item for item in update_history["transitions"]
+        if any(change["current"] == "1.7.0" for change in item["changes"])
+    )
+    assert len(transition["recoveries"]) == 1
+    assert transition["recoveries"][0]["entity_name"] == "verified bind /media"
+    assert transition["recoveries"][0]["previous_text"] != (
+        transition["recoveries"][0]["current_text"]
+    )
+
+
 print("RESULT: PASS (container bind permissions, filesystem causes, safety, routing, timeline)")

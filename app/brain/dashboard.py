@@ -488,6 +488,13 @@ def evaluate_critical_same_report(evidence):
             })
 
     cpu_lines = []
+    cpu_usage_match = re.search(
+        r"CPU_USAGE_PERCENT=([0-9.]+)",
+        str(evidence.get("cpu_usage", "") or ""),
+    )
+    host_cpu_usage = (
+        float(cpu_usage_match.group(1)) if cpu_usage_match else None
+    )
     for line in process_top.splitlines()[1:12]:
         parts = line.split(None, 6)
         if len(parts) < 7:
@@ -501,13 +508,28 @@ def evaluate_critical_same_report(evidence):
         if pcpu >= 50 and not any(x in cmdline for x in noisy_collectors):
             cpu_lines.append(line.strip())
     if cpu_lines:
-        findings.append({
-            "level": "YELLOW",
-            "title": "High CPU process observed during report",
-            "detail": "\n".join(cpu_lines[:5]),
-            "why": "A process was using high CPU while the report was collected. This can help explain loaded CPU symptoms or regressions.",
-            "next": "Re-run the report after a few minutes and confirm whether the same process remains high before restarting anything.",
-        })
+        if host_cpu_usage is not None and host_cpu_usage >= 80:
+            findings.append({
+                "level": "YELLOW",
+                "title": "High CPU process corroborated by host-wide pressure",
+                "detail": "\n".join(cpu_lines[:5]),
+                "why": f"A high per-process CPU value was captured while the host CPU snapshot was also high at {host_cpu_usage:.1f}%.",
+                "next": "Re-run the report after a few minutes and confirm whether the same process and host-wide CPU pressure remain high before restarting anything.",
+            })
+        else:
+            host_context = (
+                f"The same report measured total host CPU at "
+                f"{host_cpu_usage:.1f}%."
+                if host_cpu_usage is not None
+                else "The same report did not capture a usable total host CPU value."
+            )
+            findings.append({
+                "level": "INFO",
+                "title": "High per-process CPU value needs host-wide confirmation",
+                "detail": "\n".join(cpu_lines[:5]),
+                "why": f"ps %CPU can reflect average CPU use over a process lifetime. {host_context} This does not verify current host-wide CPU pressure.",
+                "next": "Treat this as point-in-time context unless repeated reports also show high total CPU or sustained system load.",
+            })
 
     auditd = evidence.get("auditd", "")
     low_auditd = auditd.lower()
@@ -539,7 +561,18 @@ def evaluate_critical_same_report(evidence):
     media_paths = evidence.get("media_paths", "")
     media_lines = [x.strip() for x in mounts.splitlines() if x.strip()]
     path_lines = [x.strip() for x in media_paths.splitlines() if x.strip()]
-    odd_media_targets = [x for x in media_lines if "/media/" in x and "-/dev/" in x]
+    def _findmnt_value(line, key):
+        match = re.search(
+            rf'(?:^|\s){re.escape(key)}="([^"]*)"',
+            str(line or ""),
+        )
+        return match.group(1) if match else ""
+
+    odd_media_targets = [
+        x for x in media_lines
+        if _findmnt_value(x, "TARGET").startswith("/media/")
+        and "-/dev/" in _findmnt_value(x, "TARGET")
+    ]
     readonly_media = [x for x in media_lines if 'TARGET="/media/' in x and 'OPTIONS="ro,' in x]
     readonly_non_iso = [x for x in readonly_media if 'FSTYPE="iso9660"' not in x]
     appdata_line = next((x for x in path_lines if " /DATA/AppData -> " in x or "/DATA/AppData ->" in x), "")
@@ -548,11 +581,11 @@ def evaluate_critical_same_report(evidence):
 
     if odd_media_targets:
         findings.append({
-            "level": "YELLOW",
-            "title": "Files/AppData media mount naming issue detected",
+            "level": "INFO",
+            "title": "Unusual media mount target observed",
             "detail": "\n".join(odd_media_targets[:4]),
-            "why": "A media target contains an embedded device path such as -/dev/sdb. This can confuse Files app paths, AppData paths, and Docker bind paths.",
-            "next": "Verify local-storage metadata and current mount names before moving AppData or editing containers.",
+            "why": "findmnt confirms an unusual target containing an embedded device path such as -/dev/sdb. Naming alone is configuration context and does not verify an operational failure.",
+            "next": "Verify local-storage metadata and the exact active target only if Files, AppData, or a container shows a matching path failure.",
         })
 
     if readonly_non_iso:
