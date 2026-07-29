@@ -1,18 +1,39 @@
+import json
+
+
+def _text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list, tuple, set)):
+        return json.dumps(value, sort_keys=True, default=str)
+    return str(value)
+
+
 def _short(text, limit=220):
-    text = (text or "").strip()
+    text = _text(text).strip()
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
 
 
 def _count_lines(text):
-    return len([x for x in (text or "").splitlines() if x.strip()])
+    if text is None:
+        return 0
+    if isinstance(text, str):
+        return len([x for x in text.splitlines() if x.strip()])
+    if isinstance(text, dict):
+        return sum(_count_lines(value) for value in text.values())
+    if isinstance(text, (list, tuple, set)):
+        return sum(_count_lines(value) for value in text)
+    return 1 if str(text).strip() else 0
 
 
 def answer(bundle):
     lines = []
 
-    report = bundle.get("report", "")
+    report = _text(bundle.get("report", ""))
     normalized = bundle.get("normalized", {})
     evidence = bundle.get("same_report_evidence", {})
     critical = bundle.get("critical_findings", [])

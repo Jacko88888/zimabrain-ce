@@ -403,7 +403,7 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
                 forum_summary = "No matching same-report service/activity finding was detected for this question. Collect a fresh export while the symptom is active."
 
     elif comprehensive_health_question:
-        layer = comprehensive_health.answer(bundle)
+        layer = comprehensive_health.answer(bundle, question)
         active_layer = "Comprehensive System Health Layer"
         active_layer_file = "app/brain/layers/comprehensive_health.py"
         out.extend(layer["lines"])

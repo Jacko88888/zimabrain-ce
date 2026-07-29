@@ -38,6 +38,33 @@ def classify(question):
     if {"fictional", "imaginary", "nonexistent", "madeup"} & tokens:
         return _result()
 
+    if (
+        "critical" in tokens
+        and tokens & {"risk", "risks"}
+        and not tokens & {
+            "container", "containers", "disk", "disks", "drive", "drives",
+            "port", "ports", "service", "services",
+        }
+    ):
+        return _result(
+            "system", "assess", "critical-risks",
+            "comprehensive_health",
+            "comprehensive_health_question",
+            "comprehensive_health",
+        )
+
+    if (
+        tokens & {"changed", "change"}
+        and "scan" in tokens
+        and tokens & {"previous", "last"}
+    ):
+        return _result(
+            "system", "compare", "scan",
+            "trend_history",
+            "trend_history_question",
+            "trend_history",
+        )
+
     rauc_action_question = bool(
         tokens & {"safe", "safety", "rollback", "reinstall", "mark", "switch", "change"}
     )

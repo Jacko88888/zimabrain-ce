@@ -869,6 +869,9 @@ def classify(question):
             "overall health",
             "health summary",
             "system summary",
+            "critical risk assessment",
+            "critical risks",
+            "critical risk",
             "full diagnosis",
             "full report",
         ))

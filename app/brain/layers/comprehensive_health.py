@@ -103,10 +103,12 @@ def _timeline():
         return None, [], [], [], {}, {}
 
 
-def answer(bundle):
+def answer(bundle, question=""):
     evidence = bundle.get("same_report_evidence", {}) or {}
     critical = bundle.get("critical_findings", []) or []
+    normalized = bundle.get("normalized", {}) or {}
     host = host_hardware_metrics._summary(bundle)
+    critical_risk_focus = "critical risk" in str(question or "").lower()
 
     containers = _docker_states(evidence.get("docker_states", ""))
     running = [row for row in containers if row["state"] == "running"]
@@ -278,6 +280,55 @@ def answer(bundle):
         f"recovered signals: {len(recovered)}."
     )
     lines.append("")
+
+    if critical_risk_focus:
+        red_findings = [
+            finding for finding in critical
+            if finding.get("level") == "RED"
+        ]
+        yellow_findings = [
+            finding for finding in critical
+            if finding.get("level") == "YELLOW"
+        ]
+        info_count = len(normalized.get("info_only", []) or [])
+        info_count += sum(
+            1 for finding in critical
+            if finding.get("level") == "INFO"
+        )
+
+        lines.append("#### Critical risk assessment")
+        if red_findings or smart_failed or nvme_critical:
+            lines.append(
+                "- Critical risks were verified in the current captured evidence."
+            )
+            for finding in red_findings[:10]:
+                detail = finding.get("detail") or finding.get("evidence") or ""
+                lines.append(
+                    f"- RED: {finding.get('title', 'Critical finding')} — {detail}"
+                )
+            if smart_failed:
+                lines.append(
+                    "- RED: A SMART overall-health failure marker was captured."
+                )
+            for line in nvme_critical[:10]:
+                lines.append(f"- RED: NVMe critical warning — {line}")
+        else:
+            lines.append("- No critical risks were verified.")
+
+        lines.append(
+            f"- Attention-level findings: {len(actionable)} current actionable "
+            "item(s), including "
+            f"{len(yellow_findings)} YELLOW same-report finding(s)."
+        )
+        lines.append(
+            f"- Informational observations: {info_count} parsed item(s)."
+        )
+        if not red_findings and not smart_failed and not nvme_critical and actionable:
+            lines.append(
+                "- Current findings require attention, but none met the "
+                "RED/critical threshold in the captured evidence."
+            )
+        lines.append("")
 
     lines.append("#### Current actionable findings")
     if actionable:

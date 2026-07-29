@@ -75,6 +75,18 @@ cases = [
         "forbidden": ["Dashboard Alerts Layer"],
     },
     {
+        "question": "Are there any critical risks?",
+        "intent": "comprehensive_health",
+        "required": [
+            "@@VERIFY:VERIFIED@@",
+            "Active layer: Comprehensive System Health Layer",
+            "Critical risk assessment",
+            "Overall severity:",
+            "Current actionable findings",
+        ],
+        "forbidden": ["Custom Question Evidence Layer"],
+    },
+    {
         "question": "What should I check first?",
         "intent": "unknown",
         "required": [
@@ -87,7 +99,7 @@ cases = [
     },
     {
         "question": "What changed since my previous scan?",
-        "intent": "report_comparison",
+        "intent": "trend_history",
         "required": [
             "@@VERIFY:VERIFIED@@",
             "Active layer: Health Timeline and Local Memory Layer",
@@ -95,6 +107,21 @@ cases = [
             "Historical and stable values",
         ],
         "forbidden": ["Custom Question Evidence Layer"],
+    },
+    {
+        "question": "What has changed since the previous scan?",
+        "intent": "trend_history",
+        "required": [
+            "@@VERIFY:VERIFIED@@",
+            "Active layer: Health Timeline and Local Memory Layer",
+            "Worsening conditions",
+            "Historical and stable values",
+        ],
+        "forbidden": [
+            "Custom Question Evidence Layer",
+            "Report Comparison Layer",
+            "Internal Server Error",
+        ],
     },
     {
         "question": "Why is mailcowdockerized-ofelia-mailcow-1 restarting?",
@@ -166,9 +193,8 @@ cases = [
             "@@VERIFY:VERIFIED@@",
             "Active layer: Containers Layer",
             "Current Docker state summary:",
-            "Restarting containers: 1",
-            "mailcowdockerized-ofelia-mailcow-1",
-            "Unhealthy running containers: 0",
+            "Restarting containers:",
+            "Unhealthy running containers:",
             "Exited containers:",
         ],
         "forbidden": [

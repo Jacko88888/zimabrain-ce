@@ -13,6 +13,8 @@ def is_trend_question(question):
         "snapshot history", "port and smart trend", "smart trend history",
         "port trend history", "what changed since the last scan",
         "what changed from last scan", "what changed since my previous scan",
+        "what has changed since the previous scan",
+        "what changed since the previous scan",
         "compare last scan", "compare trend", "health timeline",
         "historical warning", "getting worse",
         "path drift", "mount drift", "security drift",
