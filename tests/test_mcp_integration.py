@@ -91,6 +91,27 @@ class EvidenceAdapterTests(unittest.TestCase):
         for tool in mcp_evidence.STORAGE_TOOLS:
             client.call_tool.assert_any_call(tool, {})
 
+    def test_critical_filesystem_question_calls_capacity_tool(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.list_tools.return_value = [{"name": name} for name in sorted(mcp_evidence.ALLOWED_TOOLS)]
+        client.call_tool.side_effect = lambda tool, _arguments: {"tool": tool, "status": "success"}
+        base = {
+            "status": "connected",
+            "availableTools": sorted(mcp_evidence.ALLOWED_TOOLS),
+            "calls": [],
+            "results": {},
+        }
+
+        with mock.patch.object(mcp_evidence, "ZimaBrainMcpClient", return_value=client):
+            snapshot = mcp_evidence.collect_question_evidence(
+                "Are any filesystems critically full? Explain any read-only media showing 100% used.",
+                base=base,
+            )
+
+        self.assertIn("filesystem_usage", snapshot["calls"])
+        client.call_tool.assert_any_call("filesystem_usage", {})
+
     def test_inspect_restart_count_does_not_call_logs(self):
         client = mock.MagicMock()
         client.__enter__.return_value = client
@@ -343,6 +364,37 @@ class EvidenceAdapterTests(unittest.TestCase):
         self.assertIn("endurance, media-error and critical-warning counters are not verified", answer)
         self.assertNotIn("None%", answer)
         self.assertNotIn("is healthy", answer)
+
+    def test_filesystem_capacity_answer_explains_full_read_only_media(self):
+        answer = mcp_evidence.render_targeted_storage_answer(
+            {
+                "status": "connected",
+                "generatedAt": "2026-08-15T23:38:57+00:00",
+                "availableTools": sorted(mcp_evidence.ALLOWED_TOOLS),
+                "calls": ["filesystem_usage"],
+                "results": {
+                    "filesystem_usage": {
+                        "attentionCount": 0,
+                        "filesystems": [
+                            {
+                                "source": "/dev/sdd",
+                                "filesystem": "iso9660",
+                                "usedPercent": 100,
+                                "target": "/media/sdc",
+                                "readOnlyMedia": True,
+                                "status": "informational",
+                            }
+                        ],
+                    }
+                },
+            },
+            "Are any filesystems critically full? Explain any read-only media showing 100% used.",
+        )
+
+        self.assertIn("0 require capacity attention", answer)
+        self.assertIn("read-only iso9660 media", answer)
+        self.assertIn("100% figure is normal and is not a capacity warning", answer)
+        self.assertIn("MCP Storage and Disk Health Layer", answer)
 
 
 if __name__ == "__main__":
