@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 APP_NAME = "ZimaBrain CE"
 APP_SUBTITLE = "Local Zima Knowledge Assistant"
 APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
-APP_VERSION = "v1.7.0-mcp-preview.4"
+APP_VERSION = "v1.7.0-mcp-preview.5"
 DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 QUESTION_MEMORY_DB_PATH = TREND_DB_PATH
