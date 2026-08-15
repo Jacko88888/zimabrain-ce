@@ -128,6 +128,26 @@ def _matching_container(question, containers):
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _asks_filesystem_capacity(question):
+    q = (question or "").lower()
+    if any(
+        phrase in q
+        for phrase in (
+            "filesystem usage",
+            "disk usage",
+            "storage usage",
+            "free space",
+            "capacity",
+            "full filesystem",
+            "100% used",
+        )
+    ):
+        return True
+    capacity_words = ("full", "usage", "used", "space")
+    storage_words = ("filesystem", "filesystems", "disk", "disks", "storage", "mount", "mounts", "media")
+    return any(word in q for word in capacity_words) and any(word in q for word in storage_words)
+
+
 def collect_question_evidence(question, base=None):
     snapshot = copy.deepcopy(base or collect_base_evidence())
     if snapshot.get("status") != "connected":
@@ -162,7 +182,7 @@ def collect_question_evidence(question, base=None):
     else:
         if any(phrase in q for phrase in ("storage inventory", "disk inventory", "list disks", "physical disks", "partitions")):
             refresh.append(("storage_inventory", {}))
-        if any(phrase in q for phrase in ("filesystem usage", "disk usage", "storage usage", "free space", "capacity", "full filesystem")):
+        if _asks_filesystem_capacity(q):
             refresh.append(("filesystem_usage", {}))
         if any(word in q for word in ("smart", "sata", "hdd", "crc", "sector", "reallocated", "pending sector")):
             refresh.append(("smart_health", {}))
@@ -383,7 +403,7 @@ def render_targeted_storage_answer(snapshot, question):
     if snapshot.get("status") != "connected":
         return ""
     q = (question or "").lower()
-    storage_words = ("storage", "disk", "drive", "filesystem", "smart", "nvme", "btrfs", "raid", "zfs", "crc", "sector")
+    storage_words = ("storage", "disk", "drive", "filesystem", "mount", "media", "capacity", "space", "smart", "nvme", "btrfs", "raid", "zfs", "crc", "sector")
     if not any(word in q for word in storage_words):
         return ""
 
