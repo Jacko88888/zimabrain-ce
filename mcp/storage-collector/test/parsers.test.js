@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseBtrfsFilesystems, parseBtrfsStats, parseDf, parseMdstat, parseNvme, parseSmart } from "../src/parsers.js";
+import { countActionable } from "../src/collector.js";
 
 test("SMART parser distinguishes a historical CRC warning from disk failure", () => {
   const result = parseSmart(
@@ -87,4 +88,6 @@ overlay overlay 1000 10 990 1% /
   assert.equal(rows[2].target, "/media/sdc");
   assert.equal(rows[2].filesystem, "iso9660");
   assert.equal(rows[2].status, "informational");
+  assert.equal(countActionable(rows), 1);
+  assert.equal(countActionable([rows[2]]), 0);
 });

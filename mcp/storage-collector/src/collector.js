@@ -6,6 +6,10 @@ import { parseBtrfsFilesystems, parseBtrfsStats, parseDf, parseMdstat, parseSmar
 const execFileAsync = promisify(execFile);
 const DEVICE = /^\/dev\/(?:sd[a-z]|nvme\d+n\d+|nvme\d+)$/;
 
+export function countActionable(items) {
+  return items.filter((item) => ["attention", "critical"].includes(item.status)).length;
+}
+
 function deviceList(name, fallback) {
   const values = String(process.env[name] ?? fallback).split(",").map((value) => value.trim()).filter(Boolean);
   if (!values.every((value) => DEVICE.test(value))) throw new Error(`Invalid ${name} device allow-list`);
@@ -63,7 +67,7 @@ export async function filesystemUsage() {
   const filesystems = parseDf(result.stdout);
   return {
     observedFilesystems: filesystems.length,
-    attentionCount: filesystems.filter((item) => item.status !== "healthy").length,
+    attentionCount: countActionable(filesystems),
     filesystems,
   };
 }
@@ -77,7 +81,7 @@ export async function smartHealth() {
       devices.push({ device, status: "unknown", error: String(error.message ?? error), findings: [] });
     }
   }
-  return { observedDevices: devices.length, attentionCount: devices.filter((item) => !["healthy"].includes(item.status)).length, devices };
+  return { observedDevices: devices.length, attentionCount: countActionable(devices), devices };
 }
 
 export async function nvmeHealth() {
@@ -124,7 +128,7 @@ export async function nvmeHealth() {
   }
   return {
     observedDevices: devices.length,
-    attentionCount: devices.filter((item) => ["attention", "critical"].includes(item.status)).length,
+    attentionCount: countActionable(devices),
     unverifiedCount: devices.filter((item) => item.healthVerified !== true).length,
     devices,
   };
