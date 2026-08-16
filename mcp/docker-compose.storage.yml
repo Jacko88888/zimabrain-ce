@@ -1,0 +1,57 @@
+services:
+  zimabrain-mcp-server:
+    depends_on:
+      zimabrain-storage-collector:
+        condition: service_healthy
+    environment:
+      STORAGE_COLLECTOR_URL: http://zimabrain-storage-collector:8720
+  zimabrain-storage-collector:
+    container_name: zimabrain-storage-collector
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    restart: unless-stopped
+    environment:
+      TZ: Australia/Sydney
+      SATA_DEVICES: /dev/sda,/dev/sdb,/dev/sdc
+      NVME_CONTROLLERS: /dev/nvme0,/dev/nvme1,/dev/nvme2,/dev/nvme3
+      BTRFS_DEVICES: /dev/sda,/dev/sdb,/dev/nvme0n1,/dev/nvme1n1,/dev/nvme2n1
+    devices:
+      - /dev/sda:/dev/sda:r
+      - /dev/sdb:/dev/sdb:r
+      - /dev/sdc:/dev/sdc:r
+      - /dev/nvme0:/dev/nvme0:r
+      - /dev/nvme1:/dev/nvme1:r
+      - /dev/nvme2:/dev/nvme2:r
+      - /dev/nvme3:/dev/nvme3:r
+      - /dev/nvme0n1:/dev/nvme0n1:r
+      - /dev/nvme1n1:/dev/nvme1n1:r
+      - /dev/nvme2n1:/dev/nvme2n1:r
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - type: bind
+        source: /DATA
+        target: /host/DATA
+        read_only: true
+        bind:
+          propagation: rslave
+      - type: bind
+        source: /media
+        target: /host/media
+        read_only: true
+        bind:
+          propagation: rslave
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_RAWIO
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    networks:
+      - docker-api

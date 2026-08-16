@@ -19,6 +19,7 @@ from brain import question_memory
 from brain import service_diagnostics
 from brain import rauc_diagnostics
 from brain import bind_mount_permissions
+from brain import mcp_evidence
 import os
 import secrets
 import hmac
@@ -27,7 +28,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 APP_NAME = "ZimaBrain CE"
 APP_SUBTITLE = "Local Zima Knowledge Assistant"
 APP_DESCRIPTOR = "Verifier-first diagnostic cockpit for ZimaOS"
-APP_VERSION = "v1.6.0-beta"
+APP_VERSION = "v1.7.0-mcp-preview.5"
 DASHBOARD_REPORT_URL = ""  # old external 8514 dashboard disabled
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
 QUESTION_MEMORY_DB_PATH = TREND_DB_PATH
@@ -1515,6 +1516,7 @@ def host_hardware_metrics_panel(bundle):
 
 
 def collect_same_report_evidence():
+    mcp_snapshot = mcp_evidence.collect_base_evidence()
     evidence = {
         "boot_id": run_host_command("cat /proc/sys/kernel/random/boot_id 2>/dev/null || true"),
         "failed_units": run_host_command("systemctl --failed --plain --no-pager --no-legend 2>/dev/null || true"),
@@ -1644,6 +1646,11 @@ done | head -120""",
         "cmdline": run_host_command("cat /proc/cmdline 2>/dev/null || true"),
         "host_date": run_host_command("date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || true"),
     }
+    evidence["mcp"] = mcp_snapshot
+    # Replace only evidence formats that the current MCP server fully supports.
+    # Unsupported collectors remain on the established local verifier during the
+    # explicitly labelled hybrid transition.
+    evidence.update(mcp_evidence.legacy_overrides(mcp_snapshot))
     evidence["failed_unit_details"] = service_diagnostics.collect_failed_unit_details(
         evidence.get("failed_units", ""),
         run_host_command,
@@ -2886,14 +2893,43 @@ def _apply_question_memory(question, answer, bundle):
 
 
 def answer_question(question):
-    bundle = dashboard_bundle()
-    answer = answer_builder.answer_question(
-        question,
-        bundle,
-        build_verifier_summary,
-        critical_badge,
-        severity_dot,
-    )
+    # Keep the cached dashboard immutable: question-scoped inspect/log evidence
+    # must never leak into a later, unrelated answer.
+    base_bundle = dashboard_bundle()
+    bundle = dict(base_bundle)
+    bundle["same_report_evidence"] = dict(base_bundle.get("same_report_evidence", {}))
+    base_mcp = bundle["same_report_evidence"].get("mcp")
+    question_mcp = mcp_evidence.collect_question_evidence(question, base=base_mcp)
+    bundle["same_report_evidence"]["mcp"] = question_mcp
+    bundle["mcp_evidence"] = question_mcp
+    answer = mcp_evidence.render_targeted_container_answer(question_mcp, question)
+    if not answer:
+        answer = mcp_evidence.render_targeted_process_answer(question_mcp, question)
+    if not answer:
+        answer = mcp_evidence.render_targeted_storage_answer(question_mcp, question)
+    if not answer:
+        answer = answer_builder.answer_question(
+            question,
+            bundle,
+            build_verifier_summary,
+            critical_badge,
+            severity_dot,
+        )
+        direct_mcp = mcp_evidence.render_mcp_direct_answer(question_mcp, question)
+        marker = "\n#### Direct answer / severity"
+        if direct_mcp and marker in answer:
+            answer = answer.replace(
+                marker,
+                f"\n#### Plain-English answer\n{direct_mcp}{marker}",
+                1,
+            )
+            answer = mcp_evidence.mark_hybrid_mcp_verification(answer)
+        evidence_block = mcp_evidence.render_answer_evidence(question_mcp)
+        marker = "\n#### Next safest step"
+        if marker in answer:
+            answer = answer.replace(marker, f"\n\n{evidence_block}{marker}", 1)
+        else:
+            answer = f"{answer.rstrip()}\n\n{evidence_block}"
     return _apply_question_memory(question, answer, bundle)
 
 
@@ -3032,6 +3068,9 @@ def build_installed_apps_port_map_html(bundle):
 @app.route("/")
 def index():
     bundle = dashboard_bundle()
+    mcp_status = mcp_evidence.status_summary(
+        bundle.get("same_report_evidence", {}).get("mcp")
+    )
     dashboard_url = ""
     live_visual = False
     dashboard_source_value = "Native"
@@ -3589,6 +3628,21 @@ iframe {{
       }}
     }})();
     </script>
+  </div>
+
+  <div class="panel" style="border-color:{'#22c55e' if mcp_status['status'] == 'connected' else '#facc15'};">
+    <h3>Live MCP Evidence Layer</h3>
+    <div class="small">One ZimaBrain interface, with controlled machine evidence supplied through the separate MCP boundary.</div>
+    <div class="chips">
+      <span class="chip">Status: {esc(mcp_status['status'])}</span>
+      <span class="chip">Tools discovered: {mcp_status['availableTools']} / 13</span>
+      <span class="chip">Permission: read-only</span>
+      <span class="chip">Mode: hybrid transition</span>
+      <span class="chip">MCP actions: disabled</span>
+      <span class="chip">Every call: audited</span>
+    </div>
+    <div class="small">During this transition, MCP supplies supported system, storage, container and process evidence. Existing local collectors remain only where MCP parity is not complete.</div>
+    {f'<div class="small" style="color:#facc15;margin-top:8px;">Connection detail: {esc(mcp_status["error"])}</div>' if mcp_status.get('error') else ''}
   </div>
 
   <div class="cards">
@@ -4671,6 +4725,7 @@ def _answer_sections(answer):
 
 @app.route("/api/v1/health")
 def api_v1_health():
+    mcp_status = mcp_evidence.status_summary()
     return jsonify({
         "ok": True,
         "app": APP_VERSION,
@@ -4681,12 +4736,14 @@ def api_v1_health():
         },
         "history": len(SESSION_HISTORY),
         "dashboard_loaded": bool(DASHBOARD_REPORT.strip()),
+        "mcp": mcp_status,
     })
 
 
 @app.route("/api/v1/summary")
 def api_v1_summary():
     latest = SESSION_HISTORY[-1] if SESSION_HISTORY else None
+    mcp_status = mcp_evidence.status_summary()
     return jsonify({
         "ok": True,
         "app": APP_VERSION,
@@ -4700,6 +4757,7 @@ def api_v1_summary():
             "status": DASHBOARD_STATUS,
             "characters": len(DASHBOARD_REPORT or ""),
         },
+        "mcp": mcp_status,
         "history": {
             "count": len(SESSION_HISTORY),
             "latest_question": latest.get("question") if latest else None,
