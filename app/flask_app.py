@@ -19,6 +19,7 @@ from brain import question_memory
 from brain import service_diagnostics
 from brain import rauc_diagnostics
 from brain import bind_mount_permissions
+from brain import background_monitor
 import os
 import secrets
 import hmac
@@ -3504,6 +3505,7 @@ iframe {{
           <option value="What should I check first?">What should I check first?</option>
           <option value="Are there any critical risks?">Are there any critical risks?</option>
           <option value="What has changed since the previous scan?">What has changed since the previous scan?</option>
+          <option value="Why did my NAS restart?">Why did my NAS restart?</option>
         </optgroup>
         <optgroup label="Storage and disks">
           <option value="Are my disks healthy?">Are my disks healthy?</option>
@@ -3564,6 +3566,7 @@ iframe {{
         "Ask about disks, containers, services, storage, security or performance.",
         "Example: Why is this container unhealthy?",
         "Example: What changed since my previous scan?",
+        "Example: Why did my NAS restart?",
         "Example: Is this SMART warning getting worse?"
       ];
 
@@ -4590,6 +4593,11 @@ def _answer_sections(answer):
         "healthy / normal parsed evidence": "healthy_evidence",
         "latest trend snapshot": "latest_trend_snapshot",
         "change since previous scan": "change_since_previous_scan",
+        "reboot-cause evidence": "reboot_cause_evidence",
+        "pre-reboot performance window": "pre_reboot_performance",
+        "processes captured near the recorded peaks": "pre_reboot_processes",
+        "last container and filesystem state before reboot": "pre_reboot_runtime_state",
+        "important events before reboot": "pre_reboot_events",
         "recent snapshots": "recent_snapshots",
         "trend alerts": "trend_alerts",
         "stable trend checks": "stable_trend_checks",
@@ -4616,6 +4624,11 @@ def _answer_sections(answer):
         "healthy_evidence": [],
         "latest_trend_snapshot": [],
         "change_since_previous_scan": [],
+        "reboot_cause_evidence": [],
+        "pre_reboot_performance": [],
+        "pre_reboot_processes": [],
+        "pre_reboot_runtime_state": [],
+        "pre_reboot_events": [],
         "recent_snapshots": [],
         "trend_alerts": [],
         "stable_trend_checks": [],
@@ -4808,7 +4821,13 @@ def metrics():
 
 @app.route("/health")
 def health():
-    return jsonify({"ok": True, "app": APP_VERSION, "history": len(SESSION_HISTORY), "dashboard_loaded": bool(DASHBOARD_REPORT.strip())})
+    return jsonify({
+        "ok": True,
+        "app": APP_VERSION,
+        "history": len(SESSION_HISTORY),
+        "dashboard_loaded": bool(DASHBOARD_REPORT.strip()),
+        "background_monitor": background_monitor.status(),
+    })
 
 
 def build_session_export():
@@ -4836,4 +4855,5 @@ def build_session_export():
 
 
 if __name__ == "__main__":
+    background_monitor.start_background_monitor(TREND_DB_PATH)
     app.run(host="0.0.0.0", port=8601)

@@ -7,6 +7,7 @@ from brain.layers import failed_units
 from brain.layers import snapraid_mergerfs
 from brain.layers import dashboard_alerts
 from brain.layers import comprehensive_health
+from brain.layers import host_restart
 from brain.layers import disk_crc
 from brain.layers import filesystem_usage
 from brain.layers import disk_commands
@@ -177,6 +178,11 @@ def answer_question(question, bundle, build_verifier_summary, critical_badge, se
 
     if trend_alerts.is_alert_question(question):
         return trend_alerts.answer(question, bundle)
+
+    if handler == "host_restart" or (
+        handler == "" and host_restart.is_host_restart_question(question)
+    ):
+        return host_restart.answer(question, bundle)
 
     if handler == "trend_history" or (
         handler == "" and trend_history.is_trend_question(question)

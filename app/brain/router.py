@@ -12,6 +12,7 @@ except Exception:
 
 ALL_FLAGS = [
     "comprehensive_health_question",
+    "host_restart_question",
     "host_hardware_question",
     "trend_history_question",
     "smart_health_question",
@@ -915,6 +916,7 @@ def classify(question):
 
     label_map = {
         "comprehensive_health_question": "comprehensive_health",
+        "host_restart_question": "host_restart",
         "host_hardware_question": "host_hardware_metrics",
         "trend_history_question": "trend_history",
         "smart_health_question": "smart_health",

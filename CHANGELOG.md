@@ -24,6 +24,12 @@
 - Trend History Layer for local snapshot history and previous-scan comparison.
 - Trend Alert Layer for proactive drift detection between the latest two snapshots.
 - Structured JSON blocks for trend history and trend alert output.
+- Host Restart and Incident History Layer for host-level reboot questions.
+- Lightweight rolling background samples for CPU, memory, swap, disk I/O,
+  top CPU/memory processes, container states, and tracked mounts.
+- Persistent pre-reboot OOM, kernel panic, filesystem/block-I/O, mount-change,
+  container-state, and critical resource-threshold events.
+- Configurable monitor interval and retention with seven-day bounded defaults.
 
 ### Improved
 - Reduced false positives in reverse proxy app-store searches.
@@ -32,6 +38,9 @@
 - Improved SMART answers to avoid calling a disk fully healthy when SMART visibility is incomplete.
 - Improved JSON exports so trend history and alert sections export as structured list blocks.
 - Improved diagnostic drift visibility by comparing published ports, LAN reachable ports, possible blocked ports, container count, and SMART/NVMe markers.
+- Host/NAS restart questions no longer route to container diagnostics.
+- Reboot answers distinguish verified boot transitions, explicit journal markers,
+  temporal correlations, possible abrupt shutdowns, and unavailable evidence.
 
 ### Security
 - Password protection is enabled by first-run setup.
@@ -43,4 +52,7 @@
 - ZimaBrain CE still requires elevated host visibility for local diagnostics.
 - Least-privilege hardened compose is not yet the default.
 - MCP, outbound notifications, CI, and multi-arch release workflow are future items.
+- Background history begins after this feature is installed and cannot recover
+  runtime evidence lost during earlier reboots.
+- Previous-boot cause analysis depends on persistent host journal availability.
 - Persistence/trends and proactive alert logic now exist, but external alert delivery such as ntfy/email/webhook is not implemented yet.

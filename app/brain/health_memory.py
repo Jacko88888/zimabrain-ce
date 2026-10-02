@@ -1,6 +1,8 @@
+import json
 import re
 import shlex
 import sqlite3
+import time
 from datetime import datetime
 
 from brain import service_diagnostics
@@ -9,6 +11,9 @@ from brain import bind_mount_permissions
 
 
 TREND_DB_PATH = "/data/zimabrain_trends.sqlite"
+
+MONITOR_DEFAULT_RETENTION_DAYS = 7
+MONITOR_DEFAULT_MAX_SAMPLES = 10080
 
 COUNTER_METRICS = {
     "reallocated_sectors",
@@ -907,6 +912,371 @@ def _init_db(con):
         CREATE INDEX IF NOT EXISTS idx_health_event_scan
             ON health_events(scan_id, classification, category);
     """)
+
+
+def _init_monitor_db(con):
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS monitor_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            created_epoch REAL NOT NULL,
+            boot_id TEXT NOT NULL,
+            uptime_seconds REAL,
+            cpu_percent REAL,
+            memory_percent REAL,
+            swap_percent REAL,
+            disk_read_bps REAL,
+            disk_write_bps REAL,
+            running_containers INTEGER,
+            total_containers INTEGER,
+            top_cpu_json TEXT NOT NULL DEFAULT '[]',
+            top_memory_json TEXT NOT NULL DEFAULT '[]',
+            containers_json TEXT NOT NULL DEFAULT '[]',
+            mounts_json TEXT NOT NULL DEFAULT '[]',
+            collector_status TEXT NOT NULL DEFAULT 'ok'
+        );
+        CREATE TABLE IF NOT EXISTS monitor_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            created_epoch REAL NOT NULL,
+            boot_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            message TEXT NOT NULL,
+            evidence TEXT NOT NULL DEFAULT '',
+            fingerprint TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS monitor_boot_evidence (
+            boot_id TEXT PRIMARY KEY,
+            observed_at TEXT NOT NULL,
+            previous_boot_id TEXT NOT NULL DEFAULT '',
+            journal_available INTEGER NOT NULL DEFAULT 0,
+            clean_shutdown INTEGER NOT NULL DEFAULT 0,
+            kernel_panic INTEGER NOT NULL DEFAULT 0,
+            manual_reboot INTEGER NOT NULL DEFAULT 0,
+            update_reboot INTEGER NOT NULL DEFAULT 0,
+            update_activity INTEGER NOT NULL DEFAULT 0,
+            oom_before_reboot INTEGER NOT NULL DEFAULT 0,
+            abrupt_shutdown_possible INTEGER NOT NULL DEFAULT 0,
+            evidence_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_monitor_samples_boot_time
+            ON monitor_samples(boot_id, created_epoch DESC);
+        CREATE INDEX IF NOT EXISTS idx_monitor_events_boot_time
+            ON monitor_events(boot_id, created_epoch DESC);
+    """)
+
+
+def _json_text(value, default):
+    try:
+        return json.dumps(value, separators=(",", ":"), sort_keys=True)
+    except (TypeError, ValueError):
+        return json.dumps(default, separators=(",", ":"))
+
+
+def _json_value(value, default):
+    try:
+        parsed = json.loads(value or "")
+    except (TypeError, ValueError):
+        return default
+    return parsed if isinstance(parsed, type(default)) else default
+
+
+def record_monitor_sample(
+        sample, db_path=TREND_DB_PATH,
+        retention_days=MONITOR_DEFAULT_RETENTION_DAYS,
+        max_samples=MONITOR_DEFAULT_MAX_SAMPLES):
+    """Persist one bounded background-monitor sample and its deduplicated events."""
+    sample = sample if isinstance(sample, dict) else {}
+    boot_id = str(sample.get("boot_id", "") or "").strip()
+    if not boot_id:
+        return {"ok": False, "error": "boot_id is required"}
+
+    created_epoch = float(sample.get("created_epoch") or time.time())
+    created_at = str(
+        sample.get("created_at")
+        or datetime.fromtimestamp(created_epoch).strftime("%Y-%m-%d %H:%M:%S")
+    )
+    retention_days = max(1, min(int(retention_days or 7), 30))
+    max_samples = max(120, min(int(max_samples or 10080), 43200))
+
+    with sqlite3.connect(db_path, timeout=10) as con:
+        con.execute("PRAGMA busy_timeout=10000")
+        _init_db(con)
+        _init_monitor_db(con)
+        previous = con.execute("""
+            SELECT id, boot_id, cpu_percent, memory_percent, mounts_json,
+                   containers_json
+            FROM monitor_samples
+            ORDER BY id DESC
+            LIMIT 1
+        """).fetchone()
+        cursor = con.execute("""
+            INSERT INTO monitor_samples (
+                created_at, created_epoch, boot_id, uptime_seconds,
+                cpu_percent, memory_percent, swap_percent,
+                disk_read_bps, disk_write_bps,
+                running_containers, total_containers,
+                top_cpu_json, top_memory_json, containers_json, mounts_json,
+                collector_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            created_at,
+            created_epoch,
+            boot_id,
+            sample.get("uptime_seconds"),
+            sample.get("cpu_percent"),
+            sample.get("memory_percent"),
+            sample.get("swap_percent"),
+            sample.get("disk_read_bps"),
+            sample.get("disk_write_bps"),
+            sample.get("running_containers"),
+            sample.get("total_containers"),
+            _json_text(sample.get("top_cpu", []), []),
+            _json_text(sample.get("top_memory", []), []),
+            _json_text(sample.get("containers", []), []),
+            _json_text(sample.get("mounts", []), []),
+            str(sample.get("collector_status", "ok") or "ok")[:500],
+        ))
+        sample_id = cursor.lastrowid
+
+        stored_events = 0
+        for event in sample.get("events", []) or []:
+            if not isinstance(event, dict):
+                continue
+            fingerprint = str(event.get("fingerprint", "") or "").strip()
+            kind = str(event.get("kind", "") or "").strip()
+            message = str(event.get("message", "") or "").strip()
+            if not fingerprint or not kind or not message:
+                continue
+            result = con.execute("""
+                INSERT OR IGNORE INTO monitor_events (
+                    created_at, created_epoch, boot_id, kind, severity,
+                    message, evidence, fingerprint
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                str(event.get("created_at") or created_at),
+                float(event.get("created_epoch") or created_epoch),
+                boot_id,
+                kind[:80],
+                str(event.get("severity", "information") or "information")[:20],
+                message[:1000],
+                str(event.get("evidence", "") or "")[:4000],
+                fingerprint[:255],
+            ))
+            stored_events += int(result.rowcount or 0)
+
+        cutoff = created_epoch - (retention_days * 86400)
+        con.execute("DELETE FROM monitor_samples WHERE created_epoch < ?", (cutoff,))
+        con.execute("""
+            DELETE FROM monitor_samples
+            WHERE id NOT IN (
+                SELECT id FROM monitor_samples ORDER BY id DESC LIMIT ?
+            )
+        """, (max_samples,))
+        con.execute(
+            "DELETE FROM monitor_events WHERE created_epoch < ?",
+            (created_epoch - (30 * 86400),),
+        )
+        con.commit()
+
+    return {
+        "ok": True,
+        "sample_id": sample_id,
+        "boot_changed": bool(previous and previous[1] != boot_id),
+        "events_stored": stored_events,
+    }
+
+
+def record_monitor_boot_evidence(evidence, db_path=TREND_DB_PATH):
+    evidence = evidence if isinstance(evidence, dict) else {}
+    boot_id = str(evidence.get("boot_id", "") or "").strip()
+    if not boot_id:
+        return {"ok": False, "error": "boot_id is required"}
+    observed_at = str(
+        evidence.get("observed_at")
+        or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    details = evidence.get("details", {})
+    with sqlite3.connect(db_path, timeout=10) as con:
+        con.execute("PRAGMA busy_timeout=10000")
+        _init_db(con)
+        _init_monitor_db(con)
+        con.execute("""
+            INSERT INTO monitor_boot_evidence (
+                boot_id, observed_at, previous_boot_id, journal_available,
+                clean_shutdown, kernel_panic, manual_reboot, update_reboot,
+                update_activity, oom_before_reboot, abrupt_shutdown_possible,
+                evidence_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(boot_id) DO UPDATE SET
+                observed_at=excluded.observed_at,
+                previous_boot_id=excluded.previous_boot_id,
+                journal_available=excluded.journal_available,
+                clean_shutdown=excluded.clean_shutdown,
+                kernel_panic=excluded.kernel_panic,
+                manual_reboot=excluded.manual_reboot,
+                update_reboot=excluded.update_reboot,
+                update_activity=excluded.update_activity,
+                oom_before_reboot=excluded.oom_before_reboot,
+                abrupt_shutdown_possible=excluded.abrupt_shutdown_possible,
+                evidence_json=excluded.evidence_json
+        """, (
+            boot_id,
+            observed_at,
+            str(evidence.get("previous_boot_id", "") or "")[:128],
+            1 if evidence.get("journal_available") else 0,
+            1 if evidence.get("clean_shutdown") else 0,
+            1 if evidence.get("kernel_panic") else 0,
+            1 if evidence.get("manual_reboot") else 0,
+            1 if evidence.get("update_reboot") else 0,
+            1 if evidence.get("update_activity") else 0,
+            1 if evidence.get("oom_before_reboot") else 0,
+            1 if evidence.get("abrupt_shutdown_possible") else 0,
+            _json_text(details, {}),
+        ))
+        con.commit()
+    return {"ok": True, "boot_id": boot_id}
+
+
+def monitor_status(db_path=TREND_DB_PATH):
+    if not db_path:
+        return {"sample_count": 0, "latest": None}
+    with sqlite3.connect(db_path, timeout=5) as con:
+        con.row_factory = sqlite3.Row
+        _init_db(con)
+        _init_monitor_db(con)
+        count = int(con.execute(
+            "SELECT COUNT(*) FROM monitor_samples"
+        ).fetchone()[0])
+        row = con.execute("""
+            SELECT id, created_at, boot_id, cpu_percent, memory_percent,
+                   collector_status
+            FROM monitor_samples ORDER BY id DESC LIMIT 1
+        """).fetchone()
+        return {"sample_count": count, "latest": dict(row) if row else None}
+
+
+def monitor_restart_context(db_path=TREND_DB_PATH, current_boot_id=""):
+    """Return the latest boot transition and the bounded pre-reboot window."""
+    if not db_path:
+        return {}
+    with sqlite3.connect(db_path, timeout=5) as con:
+        con.row_factory = sqlite3.Row
+        _init_db(con)
+        _init_monitor_db(con)
+
+        latest = con.execute(
+            "SELECT * FROM monitor_samples ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        boot_id = str(current_boot_id or (latest["boot_id"] if latest else ""))
+        current_row = con.execute("""
+            SELECT * FROM monitor_samples
+            WHERE boot_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (boot_id,)).fetchone() if boot_id else None
+        boot = con.execute(
+            "SELECT * FROM monitor_boot_evidence WHERE boot_id = ?",
+            (boot_id,),
+        ).fetchone() if boot_id else None
+        boot_data = dict(boot) if boot else {}
+        if boot_data:
+            boot_data["details"] = _json_value(
+                boot_data.pop("evidence_json", "{}"), {}
+            )
+
+        previous_boot_id = str(boot_data.get("previous_boot_id", "") or "")
+        if not previous_boot_id and boot_id:
+            row = con.execute("""
+                SELECT boot_id FROM monitor_samples
+                WHERE boot_id <> ?
+                ORDER BY id DESC LIMIT 1
+            """, (boot_id,)).fetchone()
+            previous_boot_id = row[0] if row else ""
+
+        previous_rows = []
+        if previous_boot_id:
+            previous_rows = list(con.execute("""
+                SELECT * FROM monitor_samples
+                WHERE boot_id = ?
+                ORDER BY id DESC LIMIT 120
+            """, (previous_boot_id,)).fetchall())
+
+        def peak(metric):
+            available = [row for row in previous_rows if row[metric] is not None]
+            if not available:
+                return None
+            row = max(available, key=lambda item: float(item[metric]))
+            result = dict(row)
+            result["top_cpu"] = _json_value(result.pop("top_cpu_json", "[]"), [])
+            result["top_memory"] = _json_value(
+                result.pop("top_memory_json", "[]"), []
+            )
+            result["containers"] = _json_value(
+                result.pop("containers_json", "[]"), []
+            )
+            result["mounts"] = _json_value(result.pop("mounts_json", "[]"), [])
+            return result
+
+        previous_summary = {}
+        if previous_rows:
+            chronological = list(reversed(previous_rows))
+            previous_summary = {
+                "boot_id": previous_boot_id,
+                "sample_count": len(previous_rows),
+                "first_sample_at": chronological[0]["created_at"],
+                "last_sample_at": chronological[-1]["created_at"],
+                "peak_cpu": peak("cpu_percent"),
+                "peak_memory": peak("memory_percent"),
+                "peak_disk_read": peak("disk_read_bps"),
+                "peak_disk_write": peak("disk_write_bps"),
+                "last_sample": dict(previous_rows[0]),
+            }
+            previous_summary["last_sample"]["top_cpu"] = _json_value(
+                previous_summary["last_sample"].pop("top_cpu_json", "[]"), []
+            )
+            previous_summary["last_sample"]["top_memory"] = _json_value(
+                previous_summary["last_sample"].pop("top_memory_json", "[]"), []
+            )
+            previous_summary["last_sample"]["containers"] = _json_value(
+                previous_summary["last_sample"].pop("containers_json", "[]"), []
+            )
+            previous_summary["last_sample"]["mounts"] = _json_value(
+                previous_summary["last_sample"].pop("mounts_json", "[]"), []
+            )
+
+        events = []
+        if previous_boot_id:
+            events = [dict(row) for row in con.execute("""
+                SELECT created_at, kind, severity, message, evidence
+                FROM monitor_events
+                WHERE boot_id = ?
+                ORDER BY id DESC LIMIT 30
+            """, (previous_boot_id,)).fetchall()]
+
+        current_sample = dict(current_row) if current_row else None
+        if current_sample:
+            current_sample["top_cpu"] = _json_value(
+                current_sample.pop("top_cpu_json", "[]"), []
+            )
+            current_sample["top_memory"] = _json_value(
+                current_sample.pop("top_memory_json", "[]"), []
+            )
+            current_sample["containers"] = _json_value(
+                current_sample.pop("containers_json", "[]"), []
+            )
+            current_sample["mounts"] = _json_value(
+                current_sample.pop("mounts_json", "[]"), []
+            )
+
+        return {
+            "current_boot_id": boot_id,
+            "previous_boot_id": previous_boot_id,
+            "boot_evidence": boot_data,
+            "current_sample": current_sample,
+            "previous": previous_summary,
+            "previous_events": events,
+        }
 
 
 def _previous(con, obs):

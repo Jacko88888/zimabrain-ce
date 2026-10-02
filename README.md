@@ -50,6 +50,7 @@ The current beta includes layered checks and knowledge areas such as:
 - SMB share diagnostics
 - Permission and ownership diagnostics
 - Report comparison
+- Host restart and pre-reboot incident history
 - Forum issue intake
 
 ## Safety model
@@ -69,4 +70,3 @@ Generated reports, raw source downloads, private evidence, logs, tarballs, secre
 ## Repository status
 
 This repository is private and currently prepared for internal review and development.
-

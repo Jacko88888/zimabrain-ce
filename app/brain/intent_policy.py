@@ -53,6 +53,44 @@ def classify(question):
             "comprehensive_health",
         )
 
+    container_scope = bool(tokens & {"container", "containers", "docker", "compose"})
+    component_scope = bool(tokens & {
+        "service", "services", "application", "applications", "app", "apps",
+        "process", "processes",
+    })
+    host_subject = bool(tokens & {
+        "nas", "host", "system", "server", "machine", "zimacube",
+        "zimaboard", "zimaos", "cube", "board",
+    })
+    reboot_focus = bool(tokens & {"reboot", "rebooted", "reboots"})
+    restart_focus = bool(tokens & {"restart", "restarted", "restarts"})
+    historical_incident = bool(
+        (
+            host_subject
+            and tokens & {"unresponsive", "frozen", "freeze", "hung", "overloaded"}
+        )
+        or (
+            tokens & {"cpu", "processor"}
+            and tokens & {"ram", "memory"}
+            and tokens & {"100", "max", "maximum", "full"}
+        )
+        or (
+            "before" in tokens
+            and tokens & {"reboot", "rebooted", "restart", "restarted"}
+        )
+    )
+    if not container_scope and not component_scope and (
+        reboot_focus
+        or (restart_focus and host_subject)
+        or historical_incident
+    ):
+        return _result(
+            "system", "diagnose", "host-restart-history",
+            "host_restart",
+            "host_restart_question",
+            "host_restart",
+        )
+
     if (
         tokens & {"changed", "change"}
         and "scan" in tokens
