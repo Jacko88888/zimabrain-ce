@@ -3030,6 +3030,286 @@ def build_installed_apps_port_map_html(bundle):
 """
 
 
+def _incident_rate(value):
+    try:
+        value = float(value or 0)
+    except (TypeError, ValueError):
+        return "0 B/s"
+    units = ("B/s", "KiB/s", "MiB/s", "GiB/s")
+    index = 0
+    while value >= 1024 and index < len(units) - 1:
+        value /= 1024
+        index += 1
+    return f"{value:.1f} {units[index]}"
+
+
+def _incident_value(value, percent=False):
+    if value is None:
+        return "N/A"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    return f"{number:.1f}%" if percent else f"{number:.1f}"
+
+
+def _incident_chart_svg(samples, series, ceiling=None, rate_axis=False):
+    width, height = 1000, 250
+    left, right, top, bottom = 62, 18, 20, 42
+    plot_width = width - left - right
+    plot_height = height - top - bottom
+    usable = []
+    for item in samples:
+        values = []
+        for key, _label, _color in series:
+            try:
+                values.append(float(item.get(key)))
+            except (TypeError, ValueError):
+                values.append(None)
+        if any(value is not None for value in values):
+            usable.append((item, values))
+
+    if not usable:
+        return '<div class="incident-empty">No samples are available for this chart yet.</div>'
+
+    epochs = [float(item.get("created_epoch") or 0) for item, _values in usable]
+    first_epoch, last_epoch = min(epochs), max(epochs)
+    epoch_span = max(last_epoch - first_epoch, 1.0)
+    observed_max = max(
+        value for _item, values in usable for value in values if value is not None
+    )
+    axis_max = float(ceiling) if ceiling is not None else max(observed_max * 1.12, 1.0)
+
+    def x_pos(item):
+        epoch = float(item.get("created_epoch") or first_epoch)
+        return left + ((epoch - first_epoch) / epoch_span) * plot_width
+
+    def y_pos(value):
+        return top + plot_height - (max(0.0, min(value, axis_max)) / axis_max) * plot_height
+
+    grid = []
+    for step in range(5):
+        value = axis_max * step / 4
+        y = y_pos(value)
+        label = _incident_rate(value) if rate_axis else f"{value:.0f}%"
+        grid.append(
+            f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" '
+            'stroke="rgba(148,163,184,.16)" stroke-width="1" />'
+            f'<text x="{left-8}" y="{y+4:.1f}" text-anchor="end" '
+            f'fill="#94a3b8" font-size="12">{esc(label)}</text>'
+        )
+
+    lines = []
+    legend = []
+    for index, (key, label, color) in enumerate(series):
+        points = []
+        circles = []
+        for item, values in usable:
+            value = values[index]
+            if value is None:
+                continue
+            x, y = x_pos(item), y_pos(value)
+            points.append(f"{x:.1f},{y:.1f}")
+            if len(usable) <= 12:
+                circles.append(
+                    f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{color}" />'
+                )
+        if len(points) == 1:
+            x, y = points[0].split(",")
+            circles.append(f'<circle cx="{x}" cy="{y}" r="4.5" fill="{color}" />')
+        elif points:
+            lines.append(
+                f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" '
+                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
+                'vector-effect="non-scaling-stroke" />'
+            )
+        lines.extend(circles)
+        legend.append(
+            f'<span><i style="background:{color}"></i>{esc(label)}</span>'
+        )
+
+    first_label = str(usable[0][0].get("created_at", ""))
+    last_label = str(usable[-1][0].get("created_at", ""))
+    svg = (
+        f'<div class="incident-legend">{"".join(legend)}</div>'
+        f'<svg class="incident-svg" viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="ZimaBrain incident history chart">'
+        f'{"".join(grid)}{"".join(lines)}'
+        f'<text x="{left}" y="{height-12}" fill="#94a3b8" font-size="12">{esc(first_label)}</text>'
+        f'<text x="{width-right}" y="{height-12}" text-anchor="end" fill="#94a3b8" font-size="12">{esc(last_label)}</text>'
+        '</svg>'
+    )
+    return svg
+
+
+def incident_history_panel(db_path=TREND_DB_PATH, hours=24):
+    try:
+        hours = int(hours)
+    except (TypeError, ValueError):
+        hours = 24
+    try:
+        history = health_memory.monitor_history(db_path, hours=hours)
+    except Exception as error:
+        return (
+            '<section id="incident-history" class="panel">'
+            '<h3>Incident History</h3>'
+            f'<div class="small">History unavailable: {esc(str(error)[:240])}</div>'
+            '</section>'
+        )
+
+    samples = history.get("samples", []) or []
+    events = history.get("events", []) or []
+    boots = history.get("boots", []) or []
+    summary = history.get("summary", {}) or {}
+    latest = history.get("latest_details", {}) or {}
+    monitor = background_monitor.status()
+    selected_hours = int(history.get("hours", hours))
+
+    status_class = "ok" if monitor.get("running") and not monitor.get("last_error") else "attention"
+    status_text = "Recording" if status_class == "ok" else "Needs attention"
+    latest_time = latest.get("created_at") or "No sample yet"
+
+    percent_chart = _incident_chart_svg(samples, (
+        ("cpu_percent", "CPU", "#60a5fa"),
+        ("memory_percent", "Memory", "#a78bfa"),
+        ("swap_percent", "Swap", "#f59e0b"),
+    ), ceiling=100)
+    disk_chart = _incident_chart_svg(samples, (
+        ("disk_read_bps", "Disk read", "#22c55e"),
+        ("disk_write_bps", "Disk write", "#f97316"),
+    ), rate_axis=True)
+
+    def process_rows(items, metric, suffix):
+        rows = []
+        for item in (items or [])[:5]:
+            value = item.get(metric)
+            display = "N/A" if value is None else f"{float(value):.1f}{suffix}"
+            rows.append(
+                '<tr>'
+                f'<td>{esc(item.get("command", "unknown"))}</td>'
+                f'<td>{esc(item.get("pid", ""))}</td>'
+                f'<td class="incident-number">{esc(display)}</td>'
+                '</tr>'
+            )
+        return "".join(rows) or '<tr><td colspan="3" class="small">No process sample yet.</td></tr>'
+
+    event_rows = []
+    for event in events[:12]:
+        severity = str(event.get("severity", "information") or "information").lower()
+        event_rows.append(
+            f'<li class="incident-event {esc(severity)}">'
+            f'<time>{esc(event.get("created_at", "unknown"))}</time>'
+            f'<b>{esc(str(event.get("kind", "event")).replace("_", " ").title())}</b>'
+            f'<span>{esc(event.get("message", ""))}</span>'
+            '</li>'
+        )
+    events_html = "".join(event_rows) or (
+        '<li class="incident-empty">No threshold, OOM, filesystem, mount or container-change event '
+        'was recorded in this window.</li>'
+    )
+
+    boot_rows = []
+    for boot in boots[:5]:
+        markers = []
+        for key, label in (
+            ("kernel_panic", "kernel panic"), ("update_reboot", "update reboot"),
+            ("manual_reboot", "manual reboot"), ("clean_shutdown", "clean shutdown"),
+            ("oom_before_reboot", "OOM"), ("abrupt_shutdown_possible", "abrupt shutdown possible"),
+        ):
+            if boot.get(key):
+                markers.append(label)
+        marker_text = ", ".join(markers) if markers else "No cause marker retained"
+        boot_rows.append(
+            '<li>'
+            f'<b>{esc(str(boot.get("boot_id", ""))[:12])}</b> '
+            f'<span>{esc(boot.get("observed_at", ""))}</span>'
+            f'<small>{esc(marker_text)}</small>'
+            '</li>'
+        )
+    boots_html = "".join(boot_rows) or '<li class="incident-empty">No boot record yet.</li>'
+
+    states = latest.get("container_states", {}) or {}
+    state_chips = "".join(
+        f'<span class="chip">{esc(state.title())}: {int(count)}</span>'
+        for state, count in sorted(states.items())
+    ) or '<span class="small">No container inventory yet.</span>'
+
+    return f"""
+    <style>
+    .incident-head {{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}}
+    .incident-head h3 {{margin:0 0 5px}}
+    .incident-actions {{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}
+    .incident-window {{color:#cbd5e1;text-decoration:none;border:1px solid #334155;border-radius:999px;padding:6px 9px;font-size:11px;font-weight:800}}
+    .incident-window.active {{background:#1d4ed8;border-color:#60a5fa;color:white}}
+    .incident-status {{border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}}
+    .incident-status.ok {{background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.45);color:#86efac}}
+    .incident-status.attention {{background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.45);color:#fcd34d}}
+    .incident-cards {{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-top:16px}}
+    .incident-card {{background:#0b1220;border:1px solid #263241;border-radius:13px;padding:12px}}
+    .incident-card small {{display:block;color:#94a3b8;text-transform:uppercase;font-weight:800;font-size:10px;letter-spacing:.08em}}
+    .incident-card strong {{display:block;font-size:20px;margin-top:5px}}
+    .incident-grid {{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}}
+    .incident-box {{background:#0b1220;border:1px solid #263241;border-radius:14px;padding:14px;min-width:0}}
+    .incident-box h4 {{margin:0 0 10px;color:#dbeafe}}
+    .incident-svg {{display:block;width:100%;height:auto;min-height:190px}}
+    .incident-legend {{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px;color:#cbd5e1;font-size:12px}}
+    .incident-legend span {{display:flex;align-items:center;gap:6px}}
+    .incident-legend i {{width:18px;height:3px;border-radius:3px}}
+    .incident-table {{width:100%;border-collapse:collapse;font-size:12px}}
+    .incident-table th,.incident-table td {{padding:7px;border-bottom:1px solid rgba(148,163,184,.13);text-align:left}}
+    .incident-table th {{color:#93c5fd}}
+    .incident-number {{text-align:right!important;font-variant-numeric:tabular-nums}}
+    .incident-events,.incident-boots {{list-style:none;padding:0;margin:0;display:grid;gap:8px}}
+    .incident-event {{display:grid;grid-template-columns:145px 150px 1fr;gap:9px;border-left:3px solid #64748b;padding:8px 10px;background:rgba(15,23,42,.72);border-radius:8px}}
+    .incident-event.critical {{border-color:#ef4444}}
+    .incident-event.attention {{border-color:#f59e0b}}
+    .incident-event time,.incident-event span {{color:#94a3b8;font-size:12px}}
+    .incident-boots li {{display:grid;grid-template-columns:110px 150px 1fr;gap:8px;padding:8px;border-bottom:1px solid rgba(148,163,184,.13)}}
+    .incident-boots span,.incident-boots small {{color:#94a3b8}}
+    .incident-empty {{color:#94a3b8;padding:12px}}
+    @media (max-width:1200px) {{.incident-cards {{grid-template-columns:repeat(3,1fr)}}}}
+    @media (max-width:850px) {{.incident-grid {{grid-template-columns:1fr}}.incident-cards {{grid-template-columns:repeat(2,1fr)}}.incident-event,.incident-boots li {{grid-template-columns:1fr}}}}
+    </style>
+    <section id="incident-history" class="panel">
+      <div class="incident-head">
+        <div>
+          <h3>Incident History</h3>
+          <div class="small">Rolling host evidence for the last {int(history.get('hours', hours))} hours. Latest sample: {esc(latest_time)}.</div>
+        </div>
+        <div class="incident-actions">
+          <a class="incident-window {'active' if selected_hours == 24 else ''}" href="/?incident_hours=24#incident-history">24 hours</a>
+          <a class="incident-window {'active' if selected_hours == 72 else ''}" href="/?incident_hours=72#incident-history">3 days</a>
+          <a class="incident-window {'active' if selected_hours == 168 else ''}" href="/?incident_hours=168#incident-history">7 days</a>
+          <span class="incident-status {status_class}">{esc(status_text)}</span>
+        </div>
+      </div>
+      <div class="incident-cards">
+        <div class="incident-card"><small>Samples</small><strong>{int(summary.get('sample_count') or 0)}</strong></div>
+        <div class="incident-card"><small>Peak CPU</small><strong>{esc(_incident_value(summary.get('peak_cpu_percent'), True))}</strong></div>
+        <div class="incident-card"><small>Peak memory</small><strong>{esc(_incident_value(summary.get('peak_memory_percent'), True))}</strong></div>
+        <div class="incident-card"><small>Peak swap</small><strong>{esc(_incident_value(summary.get('peak_swap_percent'), True))}</strong></div>
+        <div class="incident-card"><small>Peak disk read</small><strong>{esc(_incident_rate(summary.get('peak_disk_read_bps')))}</strong></div>
+        <div class="incident-card"><small>Events</small><strong>{int(summary.get('event_count') or 0)}</strong></div>
+      </div>
+      <div class="incident-grid">
+        <div class="incident-box"><h4>CPU, memory and swap</h4>{percent_chart}</div>
+        <div class="incident-box"><h4>Disk I/O</h4>{disk_chart}</div>
+        <div class="incident-box">
+          <h4>Top CPU processes</h4>
+          <table class="incident-table"><thead><tr><th>Process</th><th>PID</th><th>Host CPU</th></tr></thead><tbody>{process_rows(latest.get('top_cpu'), 'host_percent', '%')}</tbody></table>
+        </div>
+        <div class="incident-box">
+          <h4>Top memory processes</h4>
+          <table class="incident-table"><thead><tr><th>Process</th><th>PID</th><th>RSS</th></tr></thead><tbody>{process_rows(latest.get('top_memory'), 'rss_mb', ' MB')}</tbody></table>
+        </div>
+        <div class="incident-box"><h4>Container state</h4><div class="chips">{state_chips}</div><div class="small">Running {int(latest.get('running_containers') or 0)} of {int(latest.get('total_containers') or 0)} recorded containers.</div></div>
+        <div class="incident-box"><h4>Boot evidence</h4><ul class="incident-boots">{boots_html}</ul></div>
+      </div>
+      <div class="incident-box" style="margin-top:14px"><h4>Important event timeline</h4><ul class="incident-events">{events_html}</ul></div>
+    </section>
+    """
+
+
 @app.route("/")
 def index():
     bundle = dashboard_bundle()
@@ -3600,6 +3880,8 @@ iframe {{
     <div class="card"><div class="card-title">Container Alerts</div><div class="card-value">{len([c for c in n.get('exited_containers', []) if c.get('severity') == 'YELLOW']) + len(n.get('container_alert_details', []))}</div><div class="small">Possible faults only</div></div>
     <div class="card"><div class="card-title">Info Only</div><div class="card-value">{len(n.get('info_alert_details', [])) + len([c for c in n.get('exited_containers', []) if c.get('severity') == 'INFO'])}</div><div class="small">Unavailable or likely intentional</div></div>
   </div>
+
+  {incident_history_panel(hours=request.args.get('incident_hours', 24))}
 
 
   <div class="panel">
@@ -4722,9 +5004,23 @@ def api_v1_summary():
         "endpoints": [
             "GET /api/v1/health",
             "GET /api/v1/summary",
+            "GET /api/v1/incident-history",
             "POST /api/v1/ask",
         ],
     })
+
+
+@app.route("/api/v1/incident-history")
+def api_v1_incident_history():
+    try:
+        hours = int(request.args.get("hours", "24"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "hours must be an integer"}), 400
+    try:
+        history = health_memory.monitor_history(TREND_DB_PATH, hours=hours)
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)[:300]}), 500
+    return jsonify({"ok": True, **history})
 
 
 @app.route("/api/v1/ask", methods=["POST"])

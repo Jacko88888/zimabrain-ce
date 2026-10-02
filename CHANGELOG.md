@@ -30,6 +30,9 @@
 - Persistent pre-reboot OOM, kernel panic, filesystem/block-I/O, mount-change,
   container-state, and critical resource-threshold events.
 - Configurable monitor interval and retention with seven-day bounded defaults.
+- Native Incident History visuals for CPU, memory, swap, disk I/O, top
+  processes, container states, boot evidence, and important events.
+- Authenticated `/api/v1/incident-history` JSON endpoint for bounded monitor data.
 
 ### Improved
 - Reduced false positives in reverse proxy app-store searches.

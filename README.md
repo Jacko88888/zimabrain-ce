@@ -51,6 +51,7 @@ The current beta includes layered checks and knowledge areas such as:
 - Permission and ownership diagnostics
 - Report comparison
 - Host restart and pre-reboot incident history
+- Native Incident History charts and event timeline
 - Forum issue intake
 
 ## Safety model

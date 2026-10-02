@@ -1157,6 +1157,108 @@ def monitor_status(db_path=TREND_DB_PATH):
         return {"sample_count": count, "latest": dict(row) if row else None}
 
 
+def monitor_history(db_path=TREND_DB_PATH, hours=24, limit=1440):
+    """Return a bounded, UI-safe incident timeline from monitor storage."""
+    if not db_path:
+        return {
+            "hours": 0, "samples": [], "events": [], "boots": [],
+            "summary": {}, "latest_details": {},
+        }
+
+    hours = max(1, min(int(hours or 24), 24 * 7))
+    limit = max(60, min(int(limit or 1440), MONITOR_DEFAULT_MAX_SAMPLES))
+    cutoff = time.time() - (hours * 3600)
+
+    with sqlite3.connect(db_path, timeout=5) as con:
+        con.row_factory = sqlite3.Row
+        _init_db(con)
+        _init_monitor_db(con)
+
+        rows = list(con.execute("""
+            SELECT id, created_at, created_epoch, boot_id, uptime_seconds,
+                   cpu_percent, memory_percent, swap_percent,
+                   disk_read_bps, disk_write_bps,
+                   running_containers, total_containers, collector_status
+            FROM monitor_samples
+            WHERE created_epoch >= ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (cutoff, limit)).fetchall())
+        samples = [dict(row) for row in reversed(rows)]
+
+        latest_row = con.execute("""
+            SELECT * FROM monitor_samples ORDER BY id DESC LIMIT 1
+        """).fetchone()
+        latest_details = {}
+        if latest_row:
+            latest_details = dict(latest_row)
+            latest_details["top_cpu"] = _json_value(
+                latest_details.pop("top_cpu_json", "[]"), []
+            )
+            latest_details["top_memory"] = _json_value(
+                latest_details.pop("top_memory_json", "[]"), []
+            )
+            containers = _json_value(
+                latest_details.pop("containers_json", "[]"), []
+            )
+            mounts = _json_value(latest_details.pop("mounts_json", "[]"), [])
+            container_states = {}
+            for item in containers:
+                state = str(item.get("state", "unknown") or "unknown").lower()
+                container_states[state] = container_states.get(state, 0) + 1
+            latest_details["container_states"] = container_states
+            latest_details["mount_count"] = len(mounts)
+            latest_details["read_only_mounts"] = [
+                str(item.get("target", "")) for item in mounts
+                if item.get("read_only")
+            ][:20]
+
+        events = [dict(row) for row in con.execute("""
+            SELECT id, created_at, created_epoch, boot_id, kind, severity,
+                   message, evidence
+            FROM monitor_events
+            WHERE created_epoch >= ?
+            ORDER BY id DESC
+            LIMIT 100
+        """, (cutoff,)).fetchall()]
+
+        boots = [dict(row) for row in con.execute("""
+            SELECT boot_id, observed_at, previous_boot_id, journal_available,
+                   clean_shutdown, kernel_panic, manual_reboot, update_reboot,
+                   update_activity, oom_before_reboot, abrupt_shutdown_possible
+            FROM monitor_boot_evidence
+            ORDER BY observed_at DESC
+            LIMIT 8
+        """).fetchall()]
+
+    def peak(metric):
+        values = [
+            float(item[metric]) for item in samples
+            if item.get(metric) is not None
+        ]
+        return max(values) if values else None
+
+    return {
+        "hours": hours,
+        "samples": samples,
+        "events": events,
+        "boots": boots,
+        "summary": {
+            "sample_count": len(samples),
+            "boot_count": len({item.get("boot_id") for item in samples}),
+            "first_sample_at": samples[0]["created_at"] if samples else None,
+            "last_sample_at": samples[-1]["created_at"] if samples else None,
+            "peak_cpu_percent": peak("cpu_percent"),
+            "peak_memory_percent": peak("memory_percent"),
+            "peak_swap_percent": peak("swap_percent"),
+            "peak_disk_read_bps": peak("disk_read_bps"),
+            "peak_disk_write_bps": peak("disk_write_bps"),
+            "event_count": len(events),
+        },
+        "latest_details": latest_details,
+    }
+
+
 def monitor_restart_context(db_path=TREND_DB_PATH, current_boot_id=""):
     """Return the latest boot transition and the bounded pre-reboot window."""
     if not db_path:
